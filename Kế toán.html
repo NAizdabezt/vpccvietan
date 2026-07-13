@@ -1,0 +1,107 @@
+<!DOCTYPE html>
+<html lang="vi">
+<head>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1" />
+<title>VPCC Việt An — Kế toán (PH02)</title>
+<link rel="stylesheet" href="_ds/fsi-checkin-design-system-019df8fd-82d2-706c-bcbd-e163bd6586ff/styles.css" />
+<style>
+  html, body { margin: 0; height: 100%; }
+  body { font-family: var(--font-sans); background: var(--bg-base); color: var(--text-primary); }
+  #root { height: 100vh; }
+  * { box-sizing: border-box; }
+  ::-webkit-scrollbar { width: 9px; height: 9px; }
+  ::-webkit-scrollbar-thumb { background: var(--border-default); border-radius: 5px; }
+  ::-webkit-scrollbar-track { background: transparent; }
+  @keyframes vaSlideIn { from { transform: translateX(24px); opacity: 0; } to { transform: none; opacity: 1; } }
+  @keyframes vaPop { from { transform: scale(.97); opacity: 0; } to { transform: none; opacity: 1; } }
+</style>
+</head>
+<body>
+<div id="root"></div>
+
+<script src="https://unpkg.com/react@18.3.1/umd/react.development.js" integrity="sha384-hD6/rw4ppMLGNu3tX5cjIb+uRZ7UkRJ6BPkLpg4hAu/6onKUg4lLsHAs9EBPT82L" crossorigin="anonymous"></script>
+<script src="https://unpkg.com/react-dom@18.3.1/umd/react-dom.development.js" integrity="sha384-u6aeetuaXnQ38mYT8rp6sbXaQe3NL9t+IBXmnYxwkUI2Hw4bsp2Wvmx4yRQF1uAm" crossorigin="anonymous"></script>
+<script src="https://unpkg.com/@babel/standalone@7.29.0/babel.min.js" integrity="sha384-m08KidiNqLdpJqLq95G/LEi8Qvjl/xUYll3QILypMoQ65QorJ9Lvtp2RXYGBFj1y" crossorigin="anonymous"></script>
+<script src="https://unpkg.com/lucide@0.460.0/dist/umd/lucide.js"></script>
+<script src="assets/lucide-react-shim.js"></script>
+<script src="_ds/fsi-checkin-design-system-019df8fd-82d2-706c-bcbd-e163bd6586ff/_ds_bundle.js"></script>
+
+<script type="text/babel" src="tweaks-panel.jsx"></script>
+<script type="text/babel" src="src/login.jsx"></script>
+<script type="text/babel" src="src/pos/data.jsx"></script>
+<script type="text/babel" src="src/pos/shell.jsx"></script>
+<script type="text/babel" src="src/sessions.jsx"></script>
+<script type="text/babel" src="src/pos/accounting.jsx"></script>
+
+<script type="text/babel">
+const { useState, useEffect } = React;
+
+const TWEAK_DEFAULTS = /*EDITMODE-BEGIN*/{
+  "accent": "#2563eb"
+}/*EDITMODE-END*/;
+
+function App() {
+  const [t, setTweak] = useTweaks(TWEAK_DEFAULTS);
+  const paramRole = new URLSearchParams(window.location.search).get("role");
+  const [authed, setAuthed] = useState(!!paramRole);
+  const [page, setPage] = useState("overview");
+  const role = "acct";
+
+  const { PosSidebar, PosTopbar } = window.POSShell;
+  const { Login } = window;
+  const { ReconScreen, InvoiceScreen } = window.POSAccounting;
+  const { OverviewScreen, CompletedScreen } = window.VASessions;
+  const goPortal = () => { window.location.href = "Đăng nhập.html"; };
+
+  useEffect(() => {
+    const r = document.documentElement;
+    r.style.setProperty("--accent", t.accent);
+    r.style.setProperty("--accent-hover", t.accent === "#2563eb" ? "#1d4ed8" : t.accent === "#2E3192" ? "#252873" : "#15803d");
+  }, [t.accent]);
+
+  if (!authed) return <Login onLogin={() => setAuthed(true)} />;
+
+  let content;
+  if (page === "overview") content = <OverviewScreen role={role} currentUser="Đỗ Văn Kế" canCreate={false} canAttach={false} canInvoice={true} />;
+  else if (page === "completed") content = <CompletedScreen role={role} />;
+  else if (page === "recon") content = <ReconScreen />;
+  else content = <InvoiceScreen />;
+
+  return (
+    <div style={{ position: "relative", display: "flex", height: "100%", background: "var(--bg-base)" }}>
+      <PosSidebar active={page} onNav={setPage} role={role} />
+      <div style={{ flex: 1, display: "flex", flexDirection: "column", minWidth: 0, minHeight: 0 }}>
+        <PosTopbar active={page} role={role} onLogout={goPortal} />
+        <main style={{ flex: 1, minHeight: 0, display: "flex", flexDirection: "column", overflow: "hidden" }}>
+          {content}
+        </main>
+      </div>
+
+      <TweaksPanel>
+        <TweakSection label="Màu nhấn" />
+        <TweakColor label="Accent" value={t.accent}
+          options={["#2563eb", "#2E3192", "#00A651"]}
+          onChange={(v) => setTweak("accent", v)} />
+      </TweaksPanel>
+    </div>
+  );
+}
+
+ReactDOM.createRoot(document.getElementById("root")).render(<App />);
+</script>
+
+<template id="__bundler_thumbnail">
+<svg viewBox="0 0 100 100" xmlns="http://www.w3.org/2000/svg">
+  <rect width="100" height="100" fill="#1a2744"/>
+  <rect x="26" y="22" width="48" height="56" rx="4" fill="#fff"/>
+  <rect x="33" y="30" width="34" height="3" rx="1.5" fill="#1c1c1a"/>
+  <rect x="33" y="40" width="14" height="10" rx="2" fill="#eef0f4"/>
+  <rect x="53" y="40" width="14" height="10" rx="2" fill="#eef0f4"/>
+  <rect x="33" y="54" width="14" height="10" rx="2" fill="#eef0f4"/>
+  <rect x="53" y="54" width="14" height="10" rx="2" fill="#16a34a"/>
+  <path d="M57 59l2 2 3.5-3.5" stroke="#fff" stroke-width="1.8" fill="none" stroke-linecap="round" stroke-linejoin="round"/>
+</svg>
+</template>
+</body>
+</html>

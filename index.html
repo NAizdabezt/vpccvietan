@@ -1,0 +1,169 @@
+<!DOCTYPE html>
+<html lang="vi">
+<head>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1" />
+<title>VPCC Việt An — Màn hình Soạn thảo (PH01)</title>
+<link rel="stylesheet" href="_ds/fsi-checkin-design-system-019df8fd-82d2-706c-bcbd-e163bd6586ff/styles.css" />
+<style>
+  html, body { margin: 0; height: 100%; }
+  body { font-family: var(--font-sans); background: var(--bg-base); color: var(--text-primary); }
+  #root { height: 100vh; }
+  * { box-sizing: border-box; }
+  ::-webkit-scrollbar { width: 9px; height: 9px; }
+  ::-webkit-scrollbar-thumb { background: var(--border-default); border-radius: 5px; }
+  ::-webkit-scrollbar-track { background: transparent; }
+</style>
+</head>
+<body>
+<div id="root"></div>
+
+<script src="https://unpkg.com/react@18.3.1/umd/react.development.js" integrity="sha384-hD6/rw4ppMLGNu3tX5cjIb+uRZ7UkRJ6BPkLpg4hAu/6onKUg4lLsHAs9EBPT82L" crossorigin="anonymous"></script>
+<script src="https://unpkg.com/react-dom@18.3.1/umd/react-dom.development.js" integrity="sha384-u6aeetuaXnQ38mYT8rp6sbXaQe3NL9t+IBXmnYxwkUI2Hw4bsp2Wvmx4yRQF1uAm" crossorigin="anonymous"></script>
+<script src="https://unpkg.com/@babel/standalone@7.29.0/babel.min.js" integrity="sha384-m08KidiNqLdpJqLq95G/LEi8Qvjl/xUYll3QILypMoQ65QorJ9Lvtp2RXYGBFj1y" crossorigin="anonymous"></script>
+<script src="https://unpkg.com/lucide@0.460.0/dist/umd/lucide.js"></script>
+<script src="assets/lucide-react-shim.js"></script>
+<script src="_ds/fsi-checkin-design-system-019df8fd-82d2-706c-bcbd-e163bd6586ff/_ds_bundle.js"></script>
+
+<script type="text/babel" src="tweaks-panel.jsx"></script>
+<script type="text/babel" src="src/data.jsx"></script>
+<script type="text/babel" src="src/templates-data.jsx"></script>
+<script type="text/babel" src="src/portal-login.jsx"></script>
+<script type="text/babel" src="src/login.jsx"></script>
+<script type="text/babel" src="src/editor.jsx"></script>
+<script type="text/babel" src="src/template-manager.jsx"></script>
+<script type="text/babel" src="src/pieces.jsx"></script>
+<script type="text/babel" src="src/lookup.jsx"></script>
+<script type="text/babel" src="src/printflow.jsx"></script>
+<script type="text/babel" src="src/shell.jsx"></script>
+<script type="text/babel" src="src/sessions.jsx"></script>
+<script type="text/babel" src="src/photoqueue.jsx"></script>
+<script type="text/babel" src="src/flowA.jsx"></script>
+
+<script type="text/babel">
+const { useState, useEffect } = React;
+
+const TWEAK_DEFAULTS = /*EDITMODE-BEGIN*/{
+  "density": "compact",
+  "sessionBar": true,
+  "accent": "#2563eb"
+}/*EDITMODE-END*/;
+
+function genSessionId() {
+  const d = new Date();
+  const p = (n) => String(n).padStart(2, "0");
+  const seq = String(Math.floor(Math.random() * 900) + 100);
+  return `PGD-${d.getFullYear()}-${p(d.getMonth() + 1)}${p(d.getDate())}-${seq}`;
+}
+
+function App() {
+  const [t, setTweak] = useTweaks(TWEAK_DEFAULTS);
+  const paramRole = new URLSearchParams(window.location.search).get("role");
+  const [authed, setAuthed] = useState(!!paramRole);
+  const [role, setRole] = useState(paramRole === "ccv" ? "ccv" : "tknv");
+  const [page, setPage] = useState("overview");
+  const [activeSession, setActiveSession] = useState(null);
+  const [composeKey, setComposeKey] = useState(0);
+
+  const { Sidebar, Topbar, SessionBar } = window.VAShell;
+  const { FlowA, Login, PhotoQueueScreen } = window;
+  const { OverviewScreen, CompletedScreen, RequestsScreen, corrReqsForCcv, lockSession, unlockSession } = window.VASessions;
+  const currentUser = role === "ccv" ? "CCV Nguyễn Quốc Việt" : "Trần Thị Mỹ Linh";
+  const goPortal = () => { window.location.href = "Đăng nhập.html"; };
+
+  // Đếm yêu cầu hiệu chỉnh chờ duyệt định tuyến tới CCV đang đăng nhập (badge sidebar)
+  const [reqTick, setReqTick] = useState(0);
+  const reqCount = role === "ccv" ? corrReqsForCcv(currentUser, false).length : 0;
+  useEffect(() => {
+    const onStore = () => setReqTick((t) => t + 1);
+    window.addEventListener("storage", onStore);
+    return () => window.removeEventListener("storage", onStore);
+  }, []);
+  // Tab "Yêu cầu hiệu chỉnh" chỉ dành cho CCV — đổi vai trò thì rời tab
+  useEffect(() => { if (page === "requests" && role !== "ccv") setPage("overview"); }, [role, page]);
+
+  useEffect(() => {
+    const r = document.documentElement;
+    r.style.setProperty("--accent", t.accent);
+    r.style.setProperty("--accent-hover", t.accent === "#2563eb" ? "#1d4ed8" : t.accent === "#2E3192" ? "#252873" : "#15803d");
+  }, [t.accent]);
+
+  if (!authed) return <Login onLogin={() => setAuthed(true)} />;
+
+  const startNew = () => {
+    const now = new Date();
+    const p = (n) => String(n).padStart(2, "0");
+    setActiveSession({ id: genSessionId(), customer: "", isNew: true, createdAt: `${p(now.getDate())}/${p(now.getMonth() + 1)}/${now.getFullYear()} · ${p(now.getHours())}:${p(now.getMinutes())}` });
+    setComposeKey((k) => k + 1);
+    setPage("compose");
+  };
+  const openSession = (s) => {
+    // Ghi nhận khóa phiên khi truy cập để chỉnh sửa/soạn thảo
+    if (["draft", "drafting", "waitNumberPay"].includes(s.status)) lockSession(s.id, currentUser);
+    setActiveSession(s); setComposeKey((k) => k + 1); setPage("compose");
+  };
+  const exitCompose = () => {
+    if (activeSession && activeSession.id) unlockSession(activeSession.id);
+    setPage("overview");
+  };
+  const onNav = (id) => {
+    if (id === "compose" && !activeSession) { startNew(); return; }
+    setReqTick((t) => t + 1);
+    setPage(id);
+  };
+
+  const composeMode = !activeSession ? "new" : activeSession.isNew ? "new" : (activeSession.status === "waitFinalize" || activeSession.status === "done") ? "view" : "edit";
+
+  return (
+    <div style={{ position: "relative", display: "flex", height: "100%", background: "var(--bg-base)" }}>
+      <Sidebar active={page} onNav={onNav} role={role} badges={{ requests: reqCount }} />
+      <div style={{ flex: 1, display: "flex", flexDirection: "column", minWidth: 0, minHeight: 0 }}>
+        <Topbar title={page === "overview" ? "Luồng tổng quan" : page === "completed" ? "Hồ sơ hoàn thành" : page === "requests" ? "Yêu cầu hiệu chỉnh" : page === "photos" ? "Hàng chờ ảnh" : page === "templates" ? "Biểu mẫu soạn thảo" : "Soạn thảo hồ sơ"} role={role} onRole={setRole} onLogout={goPortal} />
+        {page === "compose" && t.sessionBar && <SessionBar session={activeSession} />}
+        <main style={{ flex: 1, minHeight: 0, display: "flex", flexDirection: "column", overflow: "hidden" }}>
+          {page === "overview"
+            ? <OverviewScreen role={role} currentUser={currentUser} canCreate={true} canAttach={false} canCapture={role === "ccv"} onNew={startNew} onOpen={openSession} />
+            : page === "completed"
+              ? <CompletedScreen role={role} />
+              : page === "requests"
+                ? <RequestsScreen currentUser={currentUser} isCoverage={false} />
+                : page === "photos"
+                  ? <PhotoQueueScreen role={role} />
+                  : page === "templates"
+                    ? <window.VATemplateManager currentUser={currentUser} />
+                    : <FlowA key={composeKey} mode={composeMode} density={t.density} role={role} session={activeSession || { id: genSessionId() }} onExit={exitCompose} onStatus={() => {}} onMeta={(m) => setActiveSession((s) => s ? { ...s, ...m } : s)} />}
+        </main>
+      </div>
+
+      <TweaksPanel>
+        <TweakSection label="Hiển thị" />
+        <TweakRadio label="Mật độ" value={t.density}
+          options={[{ value: "comfy", label: "Thoáng" }, { value: "compact", label: "Dày" }]}
+          onChange={(v) => setTweak("density", v)} />
+        <TweakToggle label="Dải phiên giao dịch" value={t.sessionBar} onChange={(v) => setTweak("sessionBar", v)} />
+        <TweakSection label="Màu nhấn" />
+        <TweakColor label="Accent" value={t.accent}
+          options={["#2563eb", "#2E3192", "#00A651"]}
+          onChange={(v) => setTweak("accent", v)} />
+      </TweaksPanel>
+    </div>
+  );
+}
+
+ReactDOM.createRoot(document.getElementById("root")).render(<App />);
+</script>
+
+<template id="__bundler_thumbnail">
+<svg viewBox="0 0 100 100" xmlns="http://www.w3.org/2000/svg">
+  <rect width="100" height="100" fill="#1a2744"/>
+  <rect x="30" y="26" width="40" height="48" rx="4" fill="#fff"/>
+  <rect x="36" y="34" width="28" height="3" rx="1.5" fill="#2563eb"/>
+  <rect x="36" y="42" width="22" height="2.5" rx="1.25" fill="#d9d9d6"/>
+  <rect x="36" y="48" width="26" height="2.5" rx="1.25" fill="#d9d9d6"/>
+  <rect x="36" y="54" width="18" height="2.5" rx="1.25" fill="#d9d9d6"/>
+  <circle cx="66" cy="66" r="9" fill="#2563eb"/>
+  <path d="M62 66l3 3 5-6" stroke="#fff" stroke-width="2" fill="none" stroke-linecap="round" stroke-linejoin="round"/>
+</svg>
+</template>
+</body>
+</html>

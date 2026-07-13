@@ -1,0 +1,76 @@
+/* ============================================================
+   FSI Checkin — Color Tokens
+   Two layers:
+   1. BRAND palette  — the FSI corporate logo colors (red/green/indigo).
+                       Used for the logo, brand moments, marketing.
+   2. PRODUCT palette — the calm warm-gray + enterprise-blue system
+                       the actual app UI is built on (from globals.css).
+   Always build product UI from the SEMANTIC aliases at the bottom.
+   ============================================================ */
+
+:root {
+  /* ---- BRAND (corporate identity) ---------------------------- */
+  --fsi-red:     #ED1C24;   /* the "F" */
+  --fsi-green:   #00A651;   /* the "S" */
+  --fsi-indigo:  #2E3192;   /* the "I" */
+  --fsi-ink:     #1a2744;   /* deep navy used on the login brand panel */
+
+  /* ---- PRODUCT · Backgrounds (warm gray) --------------------- */
+  --bg-base:     #f5f5f3;   /* app canvas */
+  --bg-surface:  #ffffff;   /* cards, panels */
+  --bg-elevated: #fafaf9;   /* menus, popovers, sidebar */
+  --bg-overlay:  #f0f0ee;   /* hover fills */
+  --bg-inset:    #ebebea;   /* input wells */
+  --bg-sidebar:  #fafaf9;
+
+  /* ---- PRODUCT · Borders ------------------------------------- */
+  --border-subtle:  #e8e8e6;
+  --border-default: #d9d9d6;
+  --border-strong:  #b5b5b0;
+
+  /* ---- PRODUCT · Text (warm blacks) -------------------------- */
+  --text-primary:   #1c1c1a;
+  --text-secondary: #4a4a46;
+  --text-tertiary:  #8a8a84;
+  --text-disabled:  #b8b8b2;
+
+  /* ---- PRODUCT · Accent (enterprise blue) -------------------- */
+  --accent:        #2563eb;
+  --accent-hover:  #1d4ed8;
+  --accent-muted:  #eff6ff;
+  --accent-border: #bfdbfe;
+
+  /* ---- Semantic · Success ------------------------------------ */
+  --color-success:  #16a34a;
+  --bg-success:     #f0fdf4;
+  --border-success: #bbf7d0;
+  --text-success:   #15803d;
+
+  /* ---- Semantic · Warning ------------------------------------ */
+  --color-warning:  #d97706;
+  --bg-warning:     #fffbeb;
+  --border-warning: #fde68a;
+  --text-warning:   #b45309;
+
+  /* ---- Semantic · Danger ------------------------------------- */
+  --color-danger:   #dc2626;
+  --bg-danger:      #fef2f2;
+  --border-danger:  #fecaca;
+  --text-danger:    #b91c1c;
+
+  /* ---- Semantic · Info --------------------------------------- */
+  --color-info:     #0891b2;
+  --bg-info:        #ecfeff;
+  --border-info:    #a5f3fc;
+  --text-info:      #0e7490;
+
+  /* ---- Attendance code badges (X / P / O) -------------------- */
+  --code-x-bg:   #eff6ff;  --code-x-text: #1d4ed8;   /* X = đi làm  */
+  --code-p-bg:   #f5f3ff;  --code-p-text: #6d28d9;   /* P = phép    */
+  --code-o-bg:   #fff7ed;  --code-o-text: #c2410c;   /* O = OT      */
+
+  /* ---- Priority chips ---------------------------------------- */
+  --priority-high-bg:   #fef2f2;  --priority-high-text: #b91c1c;
+  --priority-mid-bg:    #fffbeb;  --priority-mid-text:  #b45309;
+  --priority-low-bg:    #f0fdf4;  --priority-low-text:  #15803d;
+}

@@ -1,0 +1,120 @@
+<!DOCTYPE html>
+<html lang="vi">
+<head>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1" />
+<title>VPCC Việt An — Số hóa & Lưu trữ (PH03)</title>
+<link rel="stylesheet" href="_ds/fsi-checkin-design-system-019df8fd-82d2-706c-bcbd-e163bd6586ff/styles.css" />
+<style>
+  html, body { margin: 0; height: 100%; }
+  body { font-family: var(--font-sans); background: var(--bg-base); color: var(--text-primary); }
+  #root { height: 100vh; }
+  * { box-sizing: border-box; }
+  ::-webkit-scrollbar { width: 9px; height: 9px; }
+  ::-webkit-scrollbar-thumb { background: var(--border-default); border-radius: 5px; }
+  ::-webkit-scrollbar-track { background: transparent; }
+  @keyframes vaSlideIn { from { transform: translateX(24px); opacity: 0; } to { transform: none; opacity: 1; } }
+  @keyframes vaPop { from { transform: scale(.97); opacity: 0; } to { transform: none; opacity: 1; } }
+  @keyframes vaSpin { to { transform: rotate(360deg); } }
+  @keyframes vaScan { 0% { top: 0; } 50% { top: calc(100% - 28px); } 100% { top: 0; } }
+  @media print {
+    body * { visibility: hidden !important; }
+    #va-print-cover, #va-print-cover * { visibility: visible !important; }
+    #va-print-cover { position: fixed !important; left: 0 !important; top: 0 !important; margin: 0 !important; box-shadow: none !important; border: none !important; border-radius: 0 !important; }
+  }
+</style>
+</head>
+<body>
+<div id="root"></div>
+
+<script src="https://unpkg.com/react@18.3.1/umd/react.development.js" integrity="sha384-hD6/rw4ppMLGNu3tX5cjIb+uRZ7UkRJ6BPkLpg4hAu/6onKUg4lLsHAs9EBPT82L" crossorigin="anonymous"></script>
+<script src="https://unpkg.com/react-dom@18.3.1/umd/react-dom.development.js" integrity="sha384-u6aeetuaXnQ38mYT8rp6sbXaQe3NL9t+IBXmnYxwkUI2Hw4bsp2Wvmx4yRQF1uAm" crossorigin="anonymous"></script>
+<script src="https://unpkg.com/@babel/standalone@7.29.0/babel.min.js" integrity="sha384-m08KidiNqLdpJqLq95G/LEi8Qvjl/xUYll3QILypMoQ65QorJ9Lvtp2RXYGBFj1y" crossorigin="anonymous"></script>
+<script src="https://unpkg.com/lucide@0.460.0/dist/umd/lucide.js"></script>
+<script src="assets/lucide-react-shim.js"></script>
+<script src="_ds/fsi-checkin-design-system-019df8fd-82d2-706c-bcbd-e163bd6586ff/_ds_bundle.js"></script>
+
+<script type="text/babel" src="tweaks-panel.jsx"></script>
+<script type="text/babel" src="src/login.jsx"></script>
+<script type="text/babel" src="src/arc/data.jsx"></script>
+<script type="text/babel" src="src/arc/shell.jsx"></script>
+<script type="text/babel" src="src/sessions.jsx"></script>
+<script type="text/babel" src="src/arc/cover.jsx"></script>
+<script type="text/babel" src="src/arc/cmc.jsx"></script>
+<script type="text/babel" src="src/arc/pipeline.jsx"></script>
+<script type="text/babel" src="src/arc/warehouse.jsx"></script>
+
+<script type="text/babel">
+const { useState, useEffect } = React;
+
+const TWEAK_DEFAULTS = /*EDITMODE-BEGIN*/{
+  "accent": "#2563eb"
+}/*EDITMODE-END*/;
+
+function App() {
+  const [t, setTweak] = useTweaks(TWEAK_DEFAULTS);
+  const paramRole = new URLSearchParams(window.location.search).get("role");
+  const [authed, setAuthed] = useState(!!paramRole);
+  const [page, setPage] = useState("finalize");
+
+  const { ArcSidebar, ArcTopbar } = window.ARCShell;
+  const { Login } = window;
+  const { OverviewScreen, CompletedScreen } = window.VASessions;
+  const goPortal = () => { window.location.href = "Đăng nhập.html"; };
+  const { FinalizeScreen, ScanScreen } = window.ARCPipeline;
+  const { WarehouseScreen } = window.ARCWarehouse;
+  const { CMCScreen } = window.ARCCmc;
+
+  useEffect(() => {
+    const r = document.documentElement;
+    r.style.setProperty("--accent", t.accent);
+    r.style.setProperty("--accent-hover", t.accent === "#2563eb" ? "#1d4ed8" : t.accent === "#2E3192" ? "#252873" : "#15803d");
+  }, [t.accent]);
+
+  if (!authed) return <Login onLogin={() => setAuthed(true)} />;
+
+  let content;
+  if (page === "overview") content = <OverviewScreen role="arc" currentUser="Hoàng Minh Tuấn" canCreate={false} canAttach={false} />;
+  else if (page === "completed") content = <CompletedScreen role="arc" />;
+  else if (page === "finalize") content = <FinalizeScreen />;
+  else if (page === "scan") content = <ScanScreen />;
+  else if (page === "cmc") content = <CMCScreen />;
+  else content = <WarehouseScreen />;
+
+  return (
+    <div style={{ position: "relative", display: "flex", height: "100%", background: "var(--bg-base)" }}>
+      <ArcSidebar active={page} onNav={setPage} />
+      <div style={{ flex: 1, display: "flex", flexDirection: "column", minWidth: 0, minHeight: 0 }}>
+        <ArcTopbar active={page} onLogout={goPortal} />
+        <main style={{ flex: 1, minHeight: 0, display: "flex", flexDirection: "column", overflow: "hidden" }}>
+          {content}
+        </main>
+      </div>
+
+      <TweaksPanel>
+        <TweakSection label="Màu nhấn" />
+        <TweakColor label="Accent" value={t.accent}
+          options={["#2563eb", "#2E3192", "#00A651"]}
+          onChange={(v) => setTweak("accent", v)} />
+      </TweaksPanel>
+    </div>
+  );
+}
+
+ReactDOM.createRoot(document.getElementById("root")).render(<App />);
+</script>
+
+<template id="__bundler_thumbnail">
+<svg viewBox="0 0 100 100" xmlns="http://www.w3.org/2000/svg">
+  <rect width="100" height="100" fill="#1a2744"/>
+  <rect x="24" y="30" width="22" height="20" rx="2.5" fill="#fff"/>
+  <rect x="54" y="30" width="22" height="20" rx="2.5" fill="#2563eb"/>
+  <rect x="24" y="56" width="22" height="20" rx="2.5" fill="#16a34a"/>
+  <rect x="54" y="56" width="22" height="20" rx="2.5" fill="#fff"/>
+  <rect x="28" y="34" width="14" height="2.4" rx="1.2" fill="#1c1c1a"/>
+  <rect x="28" y="60" width="14" height="2.4" rx="1.2" fill="#1c1c1a"/>
+  <rect x="58" y="60" width="14" height="2.4" rx="1.2" fill="#1c1c1a"/>
+</svg>
+</template>
+</body>
+</html>

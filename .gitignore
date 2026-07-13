@@ -1,0 +1,33 @@
+# Dependencies
+node_modules/
+
+# Build output
+dist/
+build/
+.next/
+out/
+
+# Environment
+.env
+.env.local
+.env.*.local
+
+# Logs
+npm-debug.log*
+yarn-debug.log*
+yarn-error.log*
+*.log
+
+# OS files
+.DS_Store
+Thumbs.db
+desktop.ini
+
+# Editor
+.vscode/
+.idea/
+*.swp
+
+# Cache
+.cache/
+.parcel-cache/

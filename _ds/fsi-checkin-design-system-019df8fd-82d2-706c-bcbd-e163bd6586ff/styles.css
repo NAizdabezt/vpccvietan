@@ -1,0 +1,10 @@
+/* ============================================================
+   FSI Checkin Design System — global entry point.
+   Consumers link THIS file. It is import-only by design:
+   every token + font-face lives in a dedicated file below.
+   ============================================================ */
+
+@import "./tokens/fonts.css";
+@import "./tokens/colors.css";
+@import "./tokens/typography.css";
+@import "./tokens/spacing.css";

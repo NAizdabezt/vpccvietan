@@ -1,0 +1,43 @@
+/* ============================================================
+   FSI Checkin — Typography Tokens
+   Typeface: DM Sans (humanist sans, friendly + dense at small sizes).
+   Mono: JetBrains Mono for codes, IDs, timestamps.
+   The UI is information-dense and runs small — 14px is the body
+   workhorse, 12px for labels. Headings stay restrained (18–20px
+   semibold) rather than large display type.
+   ============================================================ */
+
+:root {
+  /* ---- Families --------------------------------------------- */
+  --font-sans: "DM Sans", system-ui, -apple-system, "Segoe UI", Roboto, sans-serif;
+  --font-mono: "JetBrains Mono", ui-monospace, "SF Mono", Menlo, monospace;
+
+  /* ---- Font sizes (px, the app's real ladder) --------------- */
+  --text-micro:  10px;   /* bottom-nav labels, badge counts */
+  --text-2xs:    11px;   /* timestamps, stat-card eyebrows  */
+  --text-xs:     12px;   /* labels, secondary meta          */
+  --text-sm:     14px;   /* BODY — default for almost all UI */
+  --text-base:   16px;   /* inputs (prevents iOS zoom)      */
+  --text-lg:     18px;   /* page titles                     */
+  --text-xl:     20px;   /* section / auth headings         */
+  --text-2xl:    24px;   /* rare emphasis                   */
+  --text-stat:   28px;   /* metric numbers on stat cards    */
+
+  /* ---- Weights ---------------------------------------------- */
+  --weight-regular:  400;
+  --weight-medium:   500;
+  --weight-semibold: 600;
+  --weight-bold:     700;
+
+  /* ---- Line heights ----------------------------------------- */
+  --leading-tight:   1.2;
+  --leading-snug:    1.35;
+  --leading-normal:  1.5;
+  --leading-relaxed: 1.6;
+
+  /* ---- Letter spacing --------------------------------------- */
+  --tracking-tight:  -0.01em;
+  --tracking-normal: 0;
+  --tracking-wide:   0.05em;   /* uppercase eyebrows          */
+  --tracking-widest: 0.1em;    /* stat-card UPPERCASE labels  */
+}
