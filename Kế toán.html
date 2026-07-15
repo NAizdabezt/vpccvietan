@@ -26,9 +26,10 @@
 <script src="https://unpkg.com/lucide@0.460.0/dist/umd/lucide.js"></script>
 <script src="assets/lucide-react-shim.js"></script>
 <script src="_ds/fsi-checkin-design-system-019df8fd-82d2-706c-bcbd-e163bd6586ff/_ds_bundle.js"></script>
+<script src="src/api-client.jsx"></script>
+<script type="text/babel" src="src/session-store.jsx"></script>
 
 <script type="text/babel" src="tweaks-panel.jsx"></script>
-<script type="text/babel" src="src/login.jsx"></script>
 <script type="text/babel" src="src/pos/data.jsx"></script>
 <script type="text/babel" src="src/pos/shell.jsx"></script>
 <script type="text/babel" src="src/sessions.jsx"></script>
@@ -43,27 +44,27 @@ const TWEAK_DEFAULTS = /*EDITMODE-BEGIN*/{
 
 function App() {
   const [t, setTweak] = useTweaks(TWEAK_DEFAULTS);
-  const paramRole = new URLSearchParams(window.location.search).get("role");
-  const [authed, setAuthed] = useState(!!paramRole);
+  const nv = window.VAApi.getUser();
+  const [authed] = useState(window.VAApi.isAuthed());
   const [page, setPage] = useState("overview");
   const role = "acct";
 
   const { PosSidebar, PosTopbar } = window.POSShell;
-  const { Login } = window;
   const { ReconScreen, InvoiceScreen } = window.POSAccounting;
   const { OverviewScreen, CompletedScreen } = window.VASessions;
-  const goPortal = () => { window.location.href = "Đăng nhập.html"; };
+  const goPortal = () => { window.VAApi.logout(); window.location.href = "Đăng nhập.html"; };
 
+  useEffect(() => { if (!authed) window.location.href = "Đăng nhập.html"; }, [authed]);
   useEffect(() => {
     const r = document.documentElement;
     r.style.setProperty("--accent", t.accent);
     r.style.setProperty("--accent-hover", t.accent === "#2563eb" ? "#1d4ed8" : t.accent === "#2E3192" ? "#252873" : "#15803d");
   }, [t.accent]);
 
-  if (!authed) return <Login onLogin={() => setAuthed(true)} />;
+  if (!authed) return null; // đang chuyển hướng sang Đăng nhập.html
 
   let content;
-  if (page === "overview") content = <OverviewScreen role={role} currentUser="Đỗ Văn Kế" canCreate={false} canAttach={false} canInvoice={true} />;
+  if (page === "overview") content = <OverviewScreen role={role} currentUser={nv ? nv.hoTen : ""} canCreate={false} canAttach={false} canInvoice={true} />;
   else if (page === "completed") content = <CompletedScreen role={role} />;
   else if (page === "recon") content = <ReconScreen />;
   else content = <InvoiceScreen />;

@@ -6,12 +6,11 @@ const ARC_SESSION_NAV = [
   { id: "completed", label: "Hồ sơ hoàn thành", icon: "FolderCheck" },
 ];
 const ARC_NAV = [
-  { id: "finalize", label: "Chốt số CC & đẩy CMC", icon: "CloudUpload", badge: 3 },
-  { id: "scan", label: "Số hóa hồ sơ", icon: "ScanLine", badge: 3 },
+  { id: "scan", label: "Số hóa & đẩy CMC", icon: "ScanLine", badge: 3 },
   { id: "cmc", label: "Liên thông CMC", icon: "Cloud", badge: 2 },
   { id: "warehouse", label: "Kho vật lý", icon: "Warehouse" },
 ];
-const ARC_TITLES = { overview: "Luồng tổng quan", completed: "Hồ sơ hoàn thành", finalize: "Chốt số CC & đẩy CMC", scan: "Số hóa hồ sơ", cmc: "Liên thông CMC", warehouse: "Kho vật lý" };
+const ARC_TITLES = { overview: "Luồng tổng quan", completed: "Hồ sơ hoàn thành", scan: "Số hóa & đẩy CMC", cmc: "Liên thông CMC", warehouse: "Kho vật lý" };
 
 function ArcSidebar({ active, onNav }) {
   const L = window.LucideReact;

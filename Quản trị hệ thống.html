@@ -24,6 +24,7 @@
 <script src="https://unpkg.com/lucide@0.460.0/dist/umd/lucide.js"></script>
 <script src="assets/lucide-react-shim.js"></script>
 <script src="_ds/fsi-checkin-design-system-019df8fd-82d2-706c-bcbd-e163bd6586ff/_ds_bundle.js"></script>
+<script src="src/api-client.jsx"></script>
 
 <script type="text/babel" src="src/sysadmin/data.jsx"></script>
 <script type="text/babel" src="src/sysadmin/designer-graph.jsx"></script>
@@ -34,7 +35,7 @@
 <script type="text/babel" src="src/sysadmin/governance.jsx"></script>
 
 <script type="text/babel">
-const { useState } = React;
+const { useState, useEffect } = React;
 
 function App() {
   const { SaSidebar, SaTopbar } = window.SaShell;
@@ -42,18 +43,30 @@ function App() {
   const { AccountsView, PermissionsView, AuditView, WorkplacesView } = window.SaGovernance;
   const { Toast } = window.FSICheckinDesignSystem_019df8;
 
+  const nv = window.VAApi.getUser();
+  // QTHT là màn quyền cao nhất (RBAC/workflow/tài khoản) — chỉ vai trò QTHT được vào,
+  // không dùng chung điều kiện "đã đăng nhập" như các màn khác.
+  const authed = window.VAApi.isAuthed() && !!nv && nv.vaiTro.includes("QTHT");
   const [page, setPage] = useState("designer");
   const [toast, setToast] = useState(null);
-  const [accounts, setAccounts] = useState(() => window.SA_DATA.accounts.map((a) => ({ ...a })));
-  const [workplaces, setWorkplaces] = useState(() => window.SA_DATA.workplaces.map((w) => ({ ...w })));
+  const [accounts, setAccounts] = useState([]);
+  const [workplaces, setWorkplaces] = useState([]);
 
-  const goPortal = () => { window.location.href = "Đăng nhập.html"; };
+  const goPortal = () => { window.VAApi.logout(); window.location.href = "Đăng nhập.html"; };
   const fire = (title, message, tone = "success") => { setToast({ title, message, tone }); setTimeout(() => setToast(null), 3200); };
+
+  const refreshAll = async () => {
+    const [accs, wps] = await Promise.all([window.SaGovernance.fetchAccountsAdapted(), window.SaGovernance.fetchWorkplacesAdapted()]);
+    setAccounts(accs); setWorkplaces(wps);
+  };
+  useEffect(() => { if (authed) refreshAll(); }, [authed]);
+  useEffect(() => { if (!authed) window.location.href = "Đăng nhập.html"; }, [authed]);
+  if (!authed) return null; // đang chuyển hướng sang Đăng nhập.html (chưa đăng nhập hoặc không phải QTHT)
 
   let view;
   if (page === "designer") view = <FlowDesigner onToast={fire} />;
-  else if (page === "accounts") view = <AccountsView onToast={fire} accounts={accounts} setAccounts={setAccounts} workplaces={workplaces} />;
-  else if (page === "workplaces") view = <WorkplacesView onToast={fire} workplaces={workplaces} setWorkplaces={setWorkplaces} accounts={accounts} />;
+  else if (page === "accounts") view = <AccountsView onToast={fire} accounts={accounts} setAccounts={setAccounts} workplaces={workplaces} onRefresh={refreshAll} />;
+  else if (page === "workplaces") view = <WorkplacesView onToast={fire} workplaces={workplaces} setWorkplaces={setWorkplaces} accounts={accounts} onRefresh={refreshAll} />;
   else if (page === "permissions") view = <PermissionsView onToast={fire} />;
   else view = <AuditView />;
 

@@ -1,7 +1,7 @@
 /* global React, window */
-/* PH03 — Liên thông CMC: hàng đợi đẩy file VB (hợp đồng lưu trữ) lên CMC DocEye Archive
-   - Giám sát trạng thái nộp lưu: chờ đẩy / đã đẩy / lỗi / quá hạn nộp lưu
-   - Đẩy / thử lại thủ công từng file hoặc đẩy hàng loạt
+/* PH03 — Liên thông CMC: giám sát tình trạng đẩy CMC (đã tự đẩy kèm file ngay khi
+   hoàn tất bước Số hóa — xem src/arc/pipeline.jsx). Màn này KHÔNG phải nơi đẩy thủ công
+   lần đầu — chỉ dùng để theo dõi & thử lại khi lần đẩy tự động bị lỗi (mạng, CMC quá tải…).
    Export: window.ARCCmc = { CMCScreen } */
 const { useState: useCmc } = React;
 
@@ -51,7 +51,7 @@ function CMCScreen() {
       <div style={{ maxWidth: 1180, margin: "0 auto", display: "flex", flexDirection: "column", gap: 16 }}>
         <div>
           <h1 style={{ fontSize: 18, fontWeight: 600, margin: 0 }}>Liên thông CMC</h1>
-          <p style={{ fontSize: 13.5, color: "var(--text-tertiary)", margin: "2px 0 0" }}>Đẩy file hợp đồng lưu trữ (đuôi <b style={{ fontFamily: "var(--font-mono)" }}>VB</b>) lên hệ thống lưu trữ tập trung CMC DocEye Archive · theo dõi hạn nộp lưu</p>
+          <p style={{ fontSize: 13.5, color: "var(--text-tertiary)", margin: "2px 0 0" }}>Theo dõi tình trạng đẩy tự động (kèm file <b style={{ fontFamily: "var(--font-mono)" }}>VB</b>) lên CMC DocEye Archive ngay sau khi số hóa · thử lại nếu lỗi · theo dõi hạn nộp lưu</p>
         </div>
 
         {/* Trạng thái kết nối */}
@@ -61,25 +61,25 @@ function CMCScreen() {
             <div style={{ fontSize: 13.5, fontWeight: 600, color: "var(--text-success)" }}>Đã kết nối {D.cmc.system}</div>
             <div style={{ fontSize: 12, color: "var(--text-secondary)" }}>Đồng bộ gần nhất {D.cmc.lastSync} · giao thức nộp lưu điện tử</div>
           </div>
-          <Button variant="primary" size="sm" icon={busy ? L.Loader : L.CloudUpload} disabled={busy || pendingIds.length === 0}
+          <Button variant="primary" size="sm" icon={busy ? L.Loader : L.RefreshCw} disabled={busy || pendingIds.length === 0}
             onClick={() => push(pendingIds, pendingIds.length + " file VB đã đẩy lên CMC.")}>
-            {busy ? "Đang đẩy…" : "Đẩy tất cả (" + pendingIds.length + ")"}
+            {busy ? "Đang đẩy…" : "Thử lại tất cả (" + pendingIds.length + ")"}
           </Button>
         </div>
 
         {/* Số liệu */}
         <div style={{ display: "grid", gridTemplateColumns: "repeat(4, 1fr)", gap: 12 }}>
           <StatCard label="Đã đẩy CMC" value={String(counts.synced)} icon={L.CheckCircle2} />
-          <StatCard label="Chờ đẩy file VB" value={String(counts.queued)} icon={L.Clock} />
+          <StatCard label="Đang xử lý / chờ thử lại" value={String(counts.queued)} icon={L.Clock} />
           <StatCard label="Lỗi đẩy" value={String(counts.error)} icon={L.AlertCircle} danger={counts.error > 0} />
           <StatCard label="Quá hạn nộp lưu" value={String(counts.overdue)} icon={L.AlertTriangle} danger={counts.overdue > 0} />
         </div>
 
-        {/* Bảng hàng đợi */}
+        {/* Bảng theo dõi */}
         <div>
           <div style={{ display: "flex", alignItems: "baseline", gap: 8, marginBottom: 8 }}>
-            <h2 style={{ fontSize: 14, fontWeight: 700, margin: 0 }}>Hàng đợi nộp lưu CMC</h2>
-            <span style={{ fontSize: 12.5, color: "var(--text-tertiary)" }}>· {rows.length} file · đuôi VB ghép từ bước Số hóa</span>
+            <h2 style={{ fontSize: 14, fontWeight: 700, margin: 0 }}>Theo dõi đẩy CMC</h2>
+            <span style={{ fontSize: 12.5, color: "var(--text-tertiary)" }}>· {rows.length} file · tự đẩy kèm dữ liệu ngay sau bước Số hóa</span>
           </div>
           <div style={{ border: "1px solid var(--border-default)", borderRadius: "var(--radius-lg)", overflow: "hidden", background: "var(--bg-surface)" }}>
             <table style={{ width: "100%", borderCollapse: "collapse" }}>
@@ -120,9 +120,9 @@ function CMCScreen() {
                       <td style={{ ...td, textAlign: "right", whiteSpace: "nowrap" }}>
                         {r.status === "synced"
                           ? <span style={{ display: "inline-flex", alignItems: "center", gap: 5, fontSize: 11.5, color: "var(--text-tertiary)" }}><L.Check size={13} /> Hoàn tất</span>
-                          : <Button variant={r.status === "error" ? "secondary" : "primary"} size="sm" icon={r.status === "error" ? L.RefreshCw : L.CloudUpload} disabled={busy || !canPush}
+                          : <Button variant={r.status === "error" ? "secondary" : "primary"} size="sm" icon={L.RefreshCw} disabled={busy || !canPush}
                               onClick={() => push([r.id], ccFull(r.soCC) + "-VB.pdf đã đẩy lên CMC.")}>
-                              {r.status === "error" ? "Thử lại" : "Đẩy lên CMC"}
+                              Thử lại
                             </Button>}
                       </td>
                     </tr>

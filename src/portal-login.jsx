@@ -1,18 +1,35 @@
 /* global React, window */
-/* Trang đăng nhập chung — một form, định tuyến theo tài khoản */
+/* Trang đăng nhập chung — xác thực thật qua API (server/), định tuyến theo
+   vai_tro trả về từ JWT. Không còn "?role=" giả danh trên URL. */
 const { useState: useStatePL } = React;
 
-const DEMO_PW = "vietan@2026";
-
-const PORTAL_ACCOUNTS = [
-  { id: "admin",   label: "Quản trị viên",     desc: "Thiết kế luồng & phân quyền",      icon: "Settings",      user: "admin.va",  dest: "Quản trị hệ thống.html",    q: "admin" },
-  { id: "leader",  label: "Lãnh đạo",          desc: "Dashboard điều hành & doanh thu",  icon: "LineChart",     user: "huy.dq",    dest: "Quản trị - Dashboard.html", q: "leader" },
-  { id: "ccv",     label: "Công chứng viên",   desc: "Ký & cấp số công chứng",           icon: "FileSignature", user: "viet.nq",   dest: "index.html",                q: "ccv" },
-  { id: "tknv",    label: "Thư ký nghiệp vụ",  desc: "Soạn thảo & tiếp nhận",            icon: "PenLine",       user: "linh.tt",   dest: "index.html",                q: "tknv" },
-  { id: "cashier", label: "Thu ngân",          desc: "Thu phí & phiếu thu",              icon: "Wallet",        user: "hoa.nt",    dest: "Thu ngân.html",             q: "cashier" },
-  { id: "acct",    label: "Kế toán",           desc: "Đối soát & hóa đơn",               icon: "Calculator",    user: "mai.lt",    dest: "Kế toán.html",              q: "acct" },
-  { id: "luutru",  label: "Lưu trữ",           desc: "Số hóa & liên thông CMC",          icon: "Archive",       user: "tuan.hm",   dest: "Lưu trữ - Số hóa.html",     q: "luutru" },
+// Ưu tiên trang đích khi 1 tài khoản có nhiều vai trò cùng lúc.
+const DEST_BY_ROLE = [
+  { vaiTro: "QTHT", dest: "Quản trị hệ thống.html" },
+  { vaiTro: "LANH_DAO", dest: "Quản trị - Dashboard.html" },
+  { vaiTro: "THU_NGAN", dest: "Thu ngân.html" },
+  { vaiTro: "KE_TOAN", dest: "Kế toán.html" },
+  { vaiTro: "LUU_TRU", dest: "Lưu trữ - Số hóa.html" },
+  { vaiTro: "CCV", dest: "index.html" },
+  { vaiTro: "TKNV", dest: "index.html" },
 ];
+function destFor(vaiTroArr) {
+  const found = DEST_BY_ROLE.find((d) => (vaiTroArr || []).includes(d.vaiTro));
+  return found ? found.dest : "index.html";
+}
+
+// Chỉ để tiện điền nhanh lúc demo — KHÔNG còn dùng để xác thực, form vẫn phải
+// gọi API thật và server mới là nơi quyết định đúng/sai.
+const DEMO_ACCOUNTS = [
+  { label: "Quản trị viên", desc: "Thiết kế luồng & phân quyền", icon: "Settings", user: "can.nv" },
+  { label: "Lãnh đạo", desc: "Dashboard điều hành & doanh thu", icon: "LineChart", user: "gd.vpcc" },
+  { label: "Công chứng viên", desc: "Ký & cấp số công chứng", icon: "FileSignature", user: "viet.nq" },
+  { label: "Thư ký nghiệp vụ", desc: "Soạn thảo & tiếp nhận", icon: "PenLine", user: "linh.tt" },
+  { label: "Thu ngân", desc: "Thu phí & phiếu thu", icon: "Wallet", user: "ha.ptt" },
+  { label: "Kế toán", desc: "Đối soát & hóa đơn", icon: "Calculator", user: "ke.dv" },
+  { label: "Lưu trữ", desc: "Số hóa & liên thông CMC", icon: "Archive", user: "tuan.hm" },
+];
+const DEMO_PW = "Vietan@2026";
 
 function PortalLogin() {
   const L = window.LucideReact;
@@ -21,17 +38,23 @@ function PortalLogin() {
   const [pw, setPw] = useStatePL("");
   const [show, setShow] = useStatePL(false);
   const [err, setErr] = useStatePL("");
+  const [busy, setBusy] = useStatePL(false);
 
   const fill = (acc) => { setUser(acc.user); setPw(DEMO_PW); setErr(""); };
 
-  const submit = (e) => {
+  const submit = async (e) => {
     e.preventDefault();
-    const acc = PORTAL_ACCOUNTS.find((a) => a.user.toLowerCase() === user.trim().toLowerCase());
-    if (!acc || pw !== DEMO_PW) {
-      setErr("Tên đăng nhập hoặc mật khẩu không đúng.");
-      return;
+    if (busy) return;
+    setBusy(true);
+    setErr("");
+    try {
+      const nhanVien = await window.VAApi.login(user.trim(), pw);
+      window.location.href = encodeURI(destFor(nhanVien.vaiTro));
+    } catch (e2) {
+      setErr(e2.message || "Tên đăng nhập hoặc mật khẩu không đúng.");
+    } finally {
+      setBusy(false);
     }
-    window.location.href = encodeURI(acc.dest) + "?role=" + acc.q;
   };
 
   return (
@@ -89,9 +112,9 @@ function PortalLogin() {
             <p style={{ fontSize: 13.5, color: "var(--text-tertiary)", margin: "4px 0 0" }}>Nhập tài khoản nghiệp vụ của bạn để bắt đầu phiên làm việc.</p>
           </div>
 
-          <Input label="Tên đăng nhập" placeholder="vd: linh.tt" value={user} onChange={(e) => { setUser(e.target.value); setErr(""); }} />
+          <Input label="Tên đăng nhập" placeholder="vd: linh.tt" value={user} disabled={busy} onChange={(e) => { setUser(e.target.value); setErr(""); }} />
           <Input
-            label="Mật khẩu" type={show ? "text" : "password"} placeholder="••••••••" value={pw} onChange={(e) => { setPw(e.target.value); setErr(""); }}
+            label="Mật khẩu" type={show ? "text" : "password"} placeholder="••••••••" value={pw} disabled={busy} onChange={(e) => { setPw(e.target.value); setErr(""); }}
             trailing={
               <button type="button" onClick={() => setShow(!show)} aria-label="Hiện mật khẩu" style={{ border: "none", background: "transparent", cursor: "pointer", color: "var(--text-tertiary)", display: "grid", placeItems: "center", padding: 0 }}>
                 {show ? <L.EyeOff size={16} /> : <L.Eye size={16} />}
@@ -110,9 +133,24 @@ function PortalLogin() {
             <a style={{ fontSize: 13, color: "var(--accent)", cursor: "pointer", fontWeight: 500 }}>Quên mật khẩu?</a>
           </div>
 
-          <Button variant="primary" size="lg" fullWidth type="submit" icon={L.LogIn}>
-            Đăng nhập
+          <Button variant="primary" size="lg" fullWidth type="submit" icon={busy ? L.Loader : L.LogIn} disabled={busy}>
+            {busy ? "Đang xác thực…" : "Đăng nhập"}
           </Button>
+
+          <div>
+            <div style={{ fontSize: 11, fontWeight: 700, textTransform: "uppercase", letterSpacing: ".05em", color: "var(--text-tertiary)", marginBottom: 8 }}>Tài khoản demo — điền nhanh</div>
+            <div style={{ display: "flex", flexWrap: "wrap", gap: 6 }}>
+              {DEMO_ACCOUNTS.map((acc) => (
+                <button key={acc.user} type="button" onClick={() => fill(acc)} title={acc.desc} style={{
+                  display: "inline-flex", alignItems: "center", gap: 5, padding: "5px 10px", borderRadius: "var(--radius-full)",
+                  border: "1px solid var(--border-default)", background: "var(--bg-surface)", color: "var(--text-secondary)",
+                  fontSize: 12, cursor: "pointer",
+                }}>
+                  {L[acc.icon] ? React.createElement(L[acc.icon], { size: 12 }) : null} {acc.label}
+                </button>
+              ))}
+            </div>
+          </div>
 
           <p style={{ fontSize: 12, color: "var(--text-tertiary)", textAlign: "center", margin: 0 }}>
             Cần hỗ trợ tài khoản? Liên hệ quản trị viên văn phòng.

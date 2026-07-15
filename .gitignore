@@ -31,3 +31,6 @@ desktop.ini
 # Cache
 .cache/
 .parcel-cache/
+
+# Claude Code session-local state (not project config)
+.claude/scheduled_tasks.lock

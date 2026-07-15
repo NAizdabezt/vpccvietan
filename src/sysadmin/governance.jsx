@@ -1,6 +1,88 @@
 /* global React, window */
-/* PH05 — Quản lý tài khoản · Phân quyền (ma trận + uỷ thác) · Nhật ký thao tác */
-const { useState: useGv } = React;
+/* PH05 — Quản lý tài khoản · Phân quyền (ma trận + uỷ thác) · Nhật ký thao tác
+   Đã nối API thật cho: Tài khoản (NhanVien), Nơi làm việc (NoiLamViec),
+   Ủy thác (UyThac), Nhật ký thao tác (NhatKyThaoTac — chỉ đọc, append-only).
+   Ma trận RBAC (PermissionsView phần 1) VẪN CÒN CỤC BỘ có chủ đích: hệ thống
+   hiện thực thi phân quyền bằng middleware theo vai trò (server/src/middleware/
+   rbac.js — CCV kế thừa quyền TKNV theo đúng REQ-053), không phải bảng quyền
+   tuỳ biến động trong DB; ma trận ở đây chỉ mang tính minh họa/tham khảo. */
+const { useState: useGv, useEffect: useEffGv } = React;
+
+/* Ánh xạ vai_tro backend (server/prisma/schema.prisma) ↔ id vai trò dùng để
+   hiển thị nhãn (D.sysRoles) — hai không gian tên khác nhau, cần dịch qua lại. */
+const ROLE_DB_TO_UI = { QTHT: "admin", LANH_DAO: "leader", CCV: "ccv", TKNV: "tknv", THU_NGAN: "cashier", KE_TOAN: "acct", LUU_TRU: "luutru" };
+const ROLE_UI_TO_DB = { admin: "QTHT", leader: "LANH_DAO", ccv: "CCV", tknv: "TKNV", cashier: "THU_NGAN", acct: "KE_TOAN", luutru: "LUU_TRU" };
+
+function gvFmtDT(iso) {
+  if (!iso) return "";
+  const d = new Date(iso);
+  const p = (n) => String(n).padStart(2, "0");
+  return `${p(d.getDate())}/${p(d.getMonth() + 1)} · ${p(d.getHours())}:${p(d.getMinutes())}`;
+}
+function gvFmtDTFull(iso) {
+  if (!iso) return "";
+  const d = new Date(iso);
+  const p = (n) => String(n).padStart(2, "0");
+  return `${p(d.getDate())}/${p(d.getMonth() + 1)}/${d.getFullYear()} · ${p(d.getHours())}:${p(d.getMinutes())}`;
+}
+
+/* Tải + dịch danh sách Tài khoản / Nơi làm việc sang đúng shape mà
+   AccountsView/WorkplacesView đang dùng (giữ nguyên phần trình bày cũ). */
+async function fetchWorkplacesAdapted() {
+  const rows = await window.VAApi.noiLamViec.list();
+  return rows.map((w) => ({ id: w.id, name: w.ten, type: w.loai || "Trụ sở chính", address: w.diaChi || "", phone: w.soDienThoai || "", status: w.trangThai ? "active" : "locked" }));
+}
+/* Nhãn/nhóm hiển thị cho từng mã loaiThaoTac ghi trong NhatKyThaoTac (server/src/lib/audit.js) */
+const AUDIT_ACTION_LABELS = {
+  DANG_NHAP: "Đăng nhập", DOI_MAT_KHAU: "Đổi mật khẩu", TAO_HO_SO: "Tạo hồ sơ",
+  CHUYEN_TRANG_THAI: "Chuyển trạng thái hồ sơ", CAP_SO: "Cấp số công chứng", DAY_CMC: "Số hóa & đẩy CMC",
+  TAO_TAI_KHOAN: "Tạo tài khoản", KHOA_TAI_KHOAN: "Khóa tài khoản", MO_KHOA_TAI_KHOAN: "Mở khóa tài khoản",
+  DAT_LAI_MAT_KHAU: "Đặt lại mật khẩu", TAO_NOI_LAM_VIEC: "Tạo nơi làm việc", CAP_NHAT_NOI_LAM_VIEC: "Cập nhật nơi làm việc",
+  TAO_UY_THAC: "Tạo ủy thác", SUA_UY_THAC: "Sửa ủy thác", THU_HOI_UY_THAC: "Thu hồi ủy thác",
+};
+const AUDIT_ACTION_CAT = {
+  DANG_NHAP: "auth", DOI_MAT_KHAU: "auth", TAO_HO_SO: "config", CHUYEN_TRANG_THAI: "config",
+  CAP_SO: "fee", DAY_CMC: "digitize", TAO_TAI_KHOAN: "config", KHOA_TAI_KHOAN: "config",
+  MO_KHOA_TAI_KHOAN: "config", DAT_LAI_MAT_KHAU: "config", TAO_NOI_LAM_VIEC: "config",
+  CAP_NHAT_NOI_LAM_VIEC: "config", TAO_UY_THAC: "config", SUA_UY_THAC: "config", THU_HOI_UY_THAC: "config",
+};
+const AUDIT_RESULT_MAP = { HOAN_TAT: "ok", DA_DONG_BO_CMC: "synced", CHO_DUYET: "pending", TU_CHOI: "rejected" };
+const AUDIT_RISK_ACTIONS = new Set(["KHOA_TAI_KHOAN", "THU_HOI_UY_THAC", "DAT_LAI_MAT_KHAU"]);
+
+function auditFromApi(r) {
+  const dt = gvFmtDTFull(r.thoiGian);
+  const actorName = r.nguoiThucHien ? r.nguoiThucHien.hoTen : "—";
+  return {
+    time: gvFmtDT(r.thoiGian), dt,
+    actor: actorName,
+    action: AUDIT_ACTION_LABELS[r.loaiThaoTac] || r.loaiThaoTac,
+    cat: AUDIT_ACTION_CAT[r.loaiThaoTac] || "config",
+    target: r.doiTuong,
+    via: r.tokenSuDung || "—",
+    result: AUDIT_RESULT_MAP[r.ketQua] || "ok",
+    risk: AUDIT_RISK_ACTIONS.has(r.loaiThaoTac),
+    changes: (r.giaTriCu != null || r.giaTriMoi != null) ? [{ field: "Giá trị", old: r.giaTriCu || "—", new: r.giaTriMoi || "—" }] : null,
+    reason: null,
+    chain: [{ step: "Thực hiện", name: actorName, role: "", time: dt }],
+    cmc: r.ketQua === "DA_DONG_BO_CMC" ? { status: "ok", time: dt } : null,
+    ip: r.ipThietBi || "—",
+    hash: (r.maBam || "").slice(0, 4) + "·" + (r.maBam || "").slice(4, 8),
+  };
+}
+
+async function fetchAccountsAdapted() {
+  const [nvs, places] = await Promise.all([window.VAApi.nhanVien.list(), window.VAApi.noiLamViec.list()]);
+  const placeName = {}; places.forEach((p) => { placeName[p.id] = p.ten; });
+  return nvs.map((nv) => ({
+    id: nv.id, name: nv.hoTen, user: nv.maNhanVien,
+    role: ROLE_DB_TO_UI[(nv.vaiTro || [])[0]] || "tknv",
+    place: nv.noiLamViecId ? (placeName[nv.noiLamViecId] || "—") : "—",
+    dept: nv.noiLamViecId ? (placeName[nv.noiLamViecId] || "—") : "—",
+    status: nv.trangThai === "ACTIVE" ? "active" : "locked",
+    last: nv.lastLogin ? gvFmtDTFull(nv.lastLogin) : "Chưa đăng nhập",
+    mustChange: !nv.lastLogin,
+  }));
+}
 
 function SaCard({ title, desc, right, children, pad = 16 }) {
   return (
@@ -42,7 +124,7 @@ function suggestUsername(fullName, taken) {
 }
 
 /* ===================== Quản lý tài khoản ===================== */
-function AccountsView({ onToast, accounts, setAccounts, workplaces }) {
+function AccountsView({ onToast, accounts, setAccounts, workplaces, onRefresh }) {
   const L = window.LucideReact;
   const D = window.SA_DATA;
   const { Avatar, Badge, Button, Select, Input, Dialog } = window.FSICheckinDesignSystem_019df8;
@@ -71,23 +153,41 @@ function AccountsView({ onToast, accounts, setAccounts, workplaces }) {
     setNf({ name: "", user: "", role: "tknv", place: (workplaces[0] || {}).name || "" });
     setAddOpen(true);
   };
-  const addAcct = () => {
+  const addAcct = async () => {
     if (!nf.name.trim() || !nf.user.trim()) return;
-    const acc = { id: "n" + Date.now(), name: nf.name.trim(), user: nf.user.trim(), role: nf.role, place: nf.place, dept: nf.place, status: "active", last: "Chưa đăng nhập", pwd: DEFAULT_PWD, mustChange: true };
-    setAccounts((as) => [acc, ...as]);
-    onToast("Đã tạo tài khoản", nf.name + " · " + nf.user + " · mật khẩu mặc định " + DEFAULT_PWD);
-    setAddOpen(false);
+    const place = workplaces.find((w) => w.name === nf.place);
+    try {
+      const created = await window.VAApi.nhanVien.create({
+        hoTen: nf.name.trim(), maNhanVien: nf.user.trim(), email: nf.user.trim() + "@vietan.vn",
+        vaiTro: [ROLE_UI_TO_DB[nf.role] || "TKNV"], noiLamViecId: place ? place.id : null,
+      });
+      onToast("Đã tạo tài khoản", nf.name + " · " + nf.user + " · mật khẩu mặc định " + created.matKhauMacDinh);
+      setAddOpen(false);
+      if (onRefresh) await onRefresh();
+    } catch (e) {
+      onToast("Tạo tài khoản thất bại", e.message, "danger");
+    }
   };
-  const toggleLock = (id) => {
+  const toggleLock = async (id) => {
     const a = accts.find((x) => x.id === id);
-    setAccounts((as) => as.map((x) => x.id === id ? { ...x, status: x.status === "locked" ? "active" : "locked" } : x));
-    onToast(a.status === "locked" ? "Đã mở khóa tài khoản" : "Đã khóa tài khoản", a.name);
+    try {
+      await window.VAApi.nhanVien.khoa(id);
+      onToast(a.status === "locked" ? "Đã mở khóa tài khoản" : "Đã khóa tài khoản", a.name);
+      if (onRefresh) await onRefresh();
+    } catch (e) {
+      onToast("Thao tác thất bại", e.message, "danger");
+    }
   };
-  const resetPwd = (id) => {
+  const resetPwd = async (id) => {
     const a = accts.find((x) => x.id === id);
-    setAccounts((as) => as.map((x) => x.id === id ? { ...x, pwd: DEFAULT_PWD, mustChange: true } : x));
-    onToast("Đã đặt lại mật khẩu", a.name + " · mật khẩu mặc định " + DEFAULT_PWD + " · buộc đổi khi đăng nhập");
-    setDetail((d) => d && d.id === id ? { ...d, pwd: DEFAULT_PWD, mustChange: true } : d);
+    try {
+      const res = await window.VAApi.nhanVien.datLaiMatKhau(id);
+      onToast("Đã đặt lại mật khẩu", a.name + " · mật khẩu mặc định " + res.matKhauMacDinh + " · buộc đổi khi đăng nhập");
+      setDetail((d) => d && d.id === id ? { ...d, mustChange: true } : d);
+      if (onRefresh) await onRefresh();
+    } catch (e) {
+      onToast("Đặt lại mật khẩu thất bại", e.message, "danger");
+    }
   };
 
   const active = accts.filter((a) => a.status === "active").length;
@@ -252,8 +352,17 @@ function PermissionsView({ onToast }) {
     const m = {}; D.perms.forEach((p) => { m[p.id] = { ...D.matrix[p.id] }; }); return m;
   });
   const [dirty, setDirty] = useGv(false);
-  const [dels, setDels] = useGv(() => D.delegations.map((d) => ({ ...d, scope: [...d.scope] })));
+  const [dels, setDels] = useGv([]);
+  const [ccvList, setCcvList] = useGv([]);
+  const [staffList, setStaffList] = useGv([]);
   const [modal, setModal] = useGv(null); // null | {mode:'create'} | {mode:'edit', id}
+
+  const loadDelegations = async () => { setDels(await window.VAApi.uyThac.list()); };
+  useEffGv(() => {
+    loadDelegations();
+    window.VAApi.nhanVien.list("CCV").then(setCcvList).catch(() => setCcvList([]));
+    window.VAApi.nhanVien.list().then((all) => setStaffList(all.filter((n) => !n.vaiTro.includes("CCV") && n.trangThai === "ACTIVE"))).catch(() => setStaffList([]));
+  }, []);
 
   const toggle = (pid, rid) => {
     if (rid === "admin") return; // Admin luôn toàn quyền
@@ -261,20 +370,30 @@ function PermissionsView({ onToast }) {
     setDirty(true);
   };
 
-  const saveDelegation = (data) => {
-    if (modal && modal.mode === "edit") {
-      setDels((ds) => ds.map((d) => d.id === modal.id ? { ...d, ...data } : d));
-      onToast("Đã cập nhật phạm vi uỷ thác", data.delegatee);
-    } else {
-      setDels((ds) => [{ id: "d" + Date.now(), status: "active", ...data }, ...ds]);
-      onToast("Đã tạo uỷ thác mới", data.delegatee + " · uỷ thác từ " + data.from);
+  const saveDelegation = async (data) => {
+    try {
+      if (modal && modal.mode === "edit") {
+        await window.VAApi.uyThac.update(modal.id, { phamVi: data.scope, thoiHan: data.expiry });
+        onToast("Đã cập nhật phạm vi uỷ thác", data.delegateeName);
+      } else {
+        await window.VAApi.uyThac.create({ nguoiDuocUyThacId: data.delegatee, ccvChuTokenId: data.from, phamVi: data.scope, thoiHan: data.expiry });
+        onToast("Đã tạo uỷ thác mới", data.delegateeName + " · uỷ thác từ " + data.fromName);
+      }
+      setModal(null);
+      await loadDelegations();
+    } catch (e) {
+      onToast("Thao tác thất bại", e.message, "danger");
     }
-    setModal(null);
   };
-  const revoke = (id) => {
+  const revoke = async (id) => {
     const d = dels.find((x) => x.id === id);
-    setDels((ds) => ds.map((x) => x.id === id ? { ...x, status: "revoked" } : x));
-    onToast("Đã thu hồi uỷ thác", d.delegatee + " · cắt quyền tức thì, giữ lịch sử Audit Trail", "danger");
+    try {
+      await window.VAApi.uyThac.thuHoi(id);
+      onToast("Đã thu hồi uỷ thác", d.nguoiDuocUyThac.hoTen + " · cắt quyền tức thì, giữ lịch sử Audit Trail", "danger");
+      await loadDelegations();
+    } catch (e) {
+      onToast("Thu hồi thất bại", e.message, "danger");
+    }
   };
 
   const colTh = { padding: "10px 8px", fontSize: 11, fontWeight: 700, textAlign: "center", color: "var(--text-tertiary)", whiteSpace: "nowrap", verticalAlign: "bottom" };
@@ -349,13 +468,12 @@ function PermissionsView({ onToast }) {
           <div>
             <div style={{ fontSize: 11.5, fontWeight: 700, textTransform: "uppercase", letterSpacing: ".04em", color: "var(--text-tertiary)", marginBottom: 9 }}>Chủ Token CMC</div>
             <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fill, minmax(280px, 1fr))", gap: 10 }}>
-              {D.tokenOwners.map((o) => (
+              {ccvList.map((o) => (
                 <div key={o.id} style={{ display: "flex", alignItems: "center", gap: 12, padding: "13px 14px", border: "1px solid var(--border-default)", borderRadius: "var(--radius-md)", background: "var(--bg-surface)" }}>
                   <div style={{ width: 38, height: 38, borderRadius: 9, background: "var(--accent-muted)", display: "grid", placeItems: "center", flexShrink: 0 }}><L.KeyRound size={18} color="var(--accent)" /></div>
                   <div style={{ flex: 1, minWidth: 0 }}>
-                    <div style={{ fontSize: 13.5, fontWeight: 600 }}>{o.name}</div>
+                    <div style={{ fontSize: 13.5, fontWeight: 600 }}>{o.hoTen}</div>
                     <div style={{ fontSize: 11.5, color: "var(--text-tertiary)" }}>CCV — chủ Token CMC · ký số &amp; đồng bộ</div>
-                    <div style={{ fontSize: 11.5, fontFamily: "var(--font-mono)", color: "var(--text-secondary)", marginTop: 3 }}>{o.token}</div>
                   </div>
                   <Badge tone="success" dot>Hoạt động</Badge>
                 </div>
@@ -368,14 +486,14 @@ function PermissionsView({ onToast }) {
             <div style={{ fontSize: 11.5, fontWeight: 700, textTransform: "uppercase", letterSpacing: ".04em", color: "var(--text-tertiary)", marginBottom: 9 }}>Uỷ thác đang cấp</div>
             <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fill, minmax(320px, 1fr))", gap: 10 }}>
               {dels.map((d) => {
-                const revoked = d.status === "revoked";
+                const revoked = d.trangThai === "DA_THU_HOI";
                 return (
                   <div key={d.id} style={{ padding: 14, border: "1px solid " + (revoked ? "var(--border-default)" : "var(--border-default)"), borderRadius: "var(--radius-md)", background: revoked ? "var(--bg-inset)" : "var(--bg-surface)", opacity: revoked ? 0.72 : 1 }}>
                     <div style={{ display: "flex", alignItems: "flex-start", gap: 11 }}>
                       <div style={{ width: 36, height: 36, borderRadius: 9, background: revoked ? "var(--bg-overlay)" : "var(--bg-success)", display: "grid", placeItems: "center", flexShrink: 0 }}><L.UserCheck size={17} color={revoked ? "var(--text-tertiary)" : "var(--text-success)"} /></div>
                       <div style={{ flex: 1, minWidth: 0 }}>
-                        <div style={{ fontSize: 13.5, fontWeight: 600 }}>{d.delegatee}</div>
-                        <div style={{ fontSize: 11.5, color: "var(--text-tertiary)" }}>Uỷ thác từ CCV {d.from}</div>
+                        <div style={{ fontSize: 13.5, fontWeight: 600 }}>{d.nguoiDuocUyThac.hoTen}</div>
+                        <div style={{ fontSize: 11.5, color: "var(--text-tertiary)" }}>Uỷ thác từ CCV {d.ccvChuToken.hoTen}</div>
                       </div>
                       <Badge tone={revoked ? "danger" : "success"} dot>{revoked ? "Đã thu hồi" : "Còn hiệu lực"}</Badge>
                     </div>
@@ -383,7 +501,7 @@ function PermissionsView({ onToast }) {
                     <div style={{ marginTop: 12 }}>
                       <div style={{ fontSize: 11, color: "var(--text-tertiary)", marginBottom: 6 }}>Phạm vi</div>
                       <div style={{ display: "flex", flexWrap: "wrap", gap: 6 }}>
-                        {d.scope.map((s) => (
+                        {d.phamVi.map((s) => (
                           <span key={s} style={{ display: "inline-flex", alignItems: "center", gap: 4, padding: "3px 9px", borderRadius: "var(--radius-full)", fontSize: 11.5, fontWeight: 500, background: "var(--bg-info)", color: "var(--text-info)", border: "1px solid var(--border-info)" }}>
                             <L.Check size={11} /> {scopeLabel(s)}
                           </span>
@@ -395,7 +513,7 @@ function PermissionsView({ onToast }) {
                     </div>
 
                     <div style={{ marginTop: 11, display: "flex", alignItems: "center", gap: 6, fontSize: 12, color: "var(--text-secondary)" }}>
-                      <L.CalendarClock size={13} color="var(--text-tertiary)" /> Thời hạn: <b style={{ fontFamily: "var(--font-mono)", fontWeight: 600 }}>{d.expiry}</b>
+                      <L.CalendarClock size={13} color="var(--text-tertiary)" /> Thời hạn: <b style={{ fontFamily: "var(--font-mono)", fontWeight: 600 }}>{new Date(d.thoiHan).toLocaleDateString("vi-VN")}</b>
                     </div>
 
                     {!revoked && (
@@ -416,32 +534,28 @@ function PermissionsView({ onToast }) {
         </div>
       </SaCard>
 
-      {modal && <DelegationModal mode={modal.mode} data={modal.mode === "edit" ? dels.find((d) => d.id === modal.id) : null} onClose={() => setModal(null)} onSave={saveDelegation} />}
+      {modal && <DelegationModal mode={modal.mode} data={modal.mode === "edit" ? dels.find((d) => d.id === modal.id) : null} ccvOpts={ccvList} staffOpts={staffList} onClose={() => setModal(null)} onSave={saveDelegation} />}
     </div>
   );
 }
 
 /* ===================== Modal tạo / sửa uỷ thác ===================== */
-function DelegationModal({ mode, data, onClose, onSave }) {
+function DelegationModal({ mode, data, ccvOpts, staffOpts, onClose, onSave }) {
   const L = window.LucideReact;
   const D = window.SA_DATA;
   const { Dialog, Button, Select } = window.FSICheckinDesignSystem_019df8;
   const isEdit = mode === "edit";
-  // người có thể được uỷ thác: tài khoản không phải chủ token, đang hoạt động
-  const ownerNames = new Set(D.tokenOwners.map((o) => o.name));
-  const staffOpts = D.accounts.filter((a) => a.status === "active" && !ownerNames.has(a.name)).map((a) => a.name);
-  const ccvOpts = D.tokenOwners.map((o) => o.name);
+  const staffSelectOpts = (staffOpts || []).map((a) => ({ value: a.id, label: a.hoTen }));
+  const ccvSelectOpts = (ccvOpts || []).map((a) => ({ value: a.id, label: a.hoTen }));
 
-  const [delegatee, setDelegatee] = useGv(data ? data.delegatee : (staffOpts[0] || ""));
-  const [from, setFrom] = useGv(data ? data.from : (ccvOpts[0] || ""));
-  const [scope, setScope] = useGv(data ? [...data.scope] : ["push", "cmc"]);
-  const [expiry, setExpiry] = useGv(data ? toISO(data.expiry) : "");
-
-  function toISO(d) { const m = String(d || "").match(/(\d{2})\/(\d{2})\/(\d{4})/); return m ? m[3] + "-" + m[2] + "-" + m[1] : ""; }
-  function toVN(iso) { const m = String(iso || "").match(/(\d{4})-(\d{2})-(\d{2})/); return m ? m[3] + "/" + m[2] + "/" + m[1] : ""; }
+  const [delegatee, setDelegatee] = useGv(data ? data.nguoiDuocUyThacId : ((staffOpts || [])[0] || {}).id || "");
+  const [from, setFrom] = useGv(data ? data.ccvChuTokenId : ((ccvOpts || [])[0] || {}).id || "");
+  const [scope, setScope] = useGv(data ? [...data.phamVi] : ["push", "cmc"]);
+  const [expiry, setExpiry] = useGv(data ? String(data.thoiHan).slice(0, 10) : "");
 
   const toggleScope = (id) => setScope((s) => s.includes(id) ? s.filter((x) => x !== id) : [...s, id]);
   const valid = delegatee && from && scope.length > 0 && expiry;
+  const nameOf = (opts, id) => (opts.find((o) => o.id === id) || {}).hoTen || "";
 
   return (
     <Dialog open title={isEdit ? "Sửa phạm vi uỷ thác" : "Tạo uỷ thác mới"} width={460} onClose={onClose}
@@ -449,12 +563,12 @@ function DelegationModal({ mode, data, onClose, onSave }) {
         <div style={{ display: "flex", gap: 10, justifyContent: "flex-end" }}>
           <Button variant="ghost" onClick={onClose}>Hủy</Button>
           <Button variant="primary" icon={isEdit ? L.Check : L.Plus} disabled={!valid}
-            onClick={() => onSave({ delegatee, from, scope, expiry: toVN(expiry) })}>{isEdit ? "Lưu thay đổi" : "Tạo uỷ thác"}</Button>
+            onClick={() => onSave({ delegatee, from, scope, expiry, delegateeName: nameOf(staffOpts || [], delegatee), fromName: nameOf(ccvOpts || [], from) })}>{isEdit ? "Lưu thay đổi" : "Tạo uỷ thác"}</Button>
         </div>
       }>
       <div style={{ display: "flex", flexDirection: "column", gap: 15 }}>
-        <Select label="Người được uỷ thác" value={delegatee} onChange={setDelegatee} options={staffOpts} disabled={isEdit} />
-        <Select label="Uỷ thác từ CCV (chủ token)" value={from} onChange={setFrom} options={ccvOpts} disabled={isEdit} />
+        <Select label="Người được uỷ thác" value={delegatee} onChange={setDelegatee} options={staffSelectOpts} disabled={isEdit} />
+        <Select label="Uỷ thác từ CCV (chủ token)" value={from} onChange={setFrom} options={ccvSelectOpts} disabled={isEdit} />
 
         <div>
           <div style={{ fontSize: 12.5, fontWeight: 500, color: "var(--text-secondary)", marginBottom: 7 }}>Phạm vi uỷ thác</div>
@@ -483,7 +597,7 @@ function DelegationModal({ mode, data, onClose, onSave }) {
         <div>
           <div style={{ fontSize: 12.5, fontWeight: 500, color: "var(--text-secondary)", marginBottom: 7 }}>Thời hạn (bắt buộc)</div>
           <div style={{ position: "relative" }}>
-            <input type="date" value={expiry} min="2026-06-21" onChange={(e) => setExpiry(e.target.value)}
+            <input type="date" value={expiry} min={new Date().toISOString().slice(0, 10)} onChange={(e) => setExpiry(e.target.value)}
               style={{ width: "100%", boxSizing: "border-box", padding: "9px 12px", fontSize: 14, fontFamily: "var(--font-sans)", borderRadius: "var(--radius-md)", border: "1px solid " + (expiry ? "var(--border-default)" : "var(--border-strong)"), background: "var(--bg-surface)", color: "var(--text-primary)" }} />
           </div>
           <div style={{ fontSize: 11.5, color: "var(--text-tertiary)", marginTop: 5, display: "flex", alignItems: "center", gap: 5 }}>
@@ -504,10 +618,13 @@ function AuditView() {
   const [actor, setActor] = useGv("all");
   const [q, setQ] = useGv("");
   const [sel, setSel] = useGv(null);
+  const [rows, setRows] = useGv([]);
 
-  const actors = ["all", ...Array.from(new Set(D.audit.map((a) => a.actor)))];
+  useEffGv(() => { window.VAApi.auditLog.list().then((data) => setRows(data.map(auditFromApi))).catch(() => setRows([])); }, []);
+
+  const actors = ["all", ...Array.from(new Set(rows.map((a) => a.actor)))];
   const actorOpts = actors.map((a) => ({ value: a, label: a === "all" ? "Tất cả người dùng" : a }));
-  const list = D.audit.filter((a) =>
+  const list = rows.filter((a) =>
     (cat === "all" || a.cat === cat) &&
     (actor === "all" || a.actor === actor) &&
     (!q || a.target.toLowerCase().includes(q.toLowerCase())));
@@ -741,7 +858,7 @@ function AuditDetailDrawer({ record, onClose }) {
 }
 
 /* ===================== Quản lý nơi làm việc ===================== */
-function WorkplacesView({ onToast, workplaces, setWorkplaces, accounts }) {
+function WorkplacesView({ onToast, workplaces, setWorkplaces, accounts, onRefresh }) {
   const L = window.LucideReact;
   const D = window.SA_DATA;
   const { Badge, Button, Select, Input, Dialog } = window.FSICheckinDesignSystem_019df8;
@@ -755,21 +872,31 @@ function WorkplacesView({ onToast, workplaces, setWorkplaces, accounts }) {
 
   const openAdd = () => { setEdit(null); setWf({ name: "", type: D.workplaceTypes[1], address: "", phone: "" }); setOpen(true); };
   const openEdit = (w) => { setEdit(w.id); setWf({ name: w.name, type: w.type, address: w.address || "", phone: w.phone || "" }); setOpen(true); };
-  const save = () => {
+  const save = async () => {
     if (!wf.name.trim()) return;
-    if (edit) {
-      setWorkplaces((ws) => ws.map((w) => w.id === edit ? { ...w, ...wf, name: wf.name.trim() } : w));
-      onToast("Đã cập nhật nơi làm việc", wf.name);
-    } else {
-      setWorkplaces((ws) => [...ws, { id: "w" + Date.now(), name: wf.name.trim(), type: wf.type, address: wf.address, phone: wf.phone, status: "active" }]);
-      onToast("Đã thêm nơi làm việc", wf.name);
+    try {
+      if (edit) {
+        await window.VAApi.noiLamViec.update(edit, { ten: wf.name.trim(), loai: wf.type, diaChi: wf.address, soDienThoai: wf.phone });
+        onToast("Đã cập nhật nơi làm việc", wf.name);
+      } else {
+        await window.VAApi.noiLamViec.create({ ten: wf.name.trim(), loai: wf.type, diaChi: wf.address, soDienThoai: wf.phone });
+        onToast("Đã thêm nơi làm việc", wf.name);
+      }
+      setOpen(false);
+      if (onRefresh) await onRefresh();
+    } catch (e) {
+      onToast("Lưu thất bại", e.message, "danger");
     }
-    setOpen(false);
   };
-  const toggle = (id) => {
+  const toggle = async (id) => {
     const w = workplaces.find((x) => x.id === id);
-    setWorkplaces((ws) => ws.map((x) => x.id === id ? { ...x, status: x.status === "locked" ? "active" : "locked" } : x));
-    onToast(w.status === "locked" ? "Đã kích hoạt nơi làm việc" : "Đã ngừng nơi làm việc", w.name);
+    try {
+      await window.VAApi.noiLamViec.update(id, { trangThai: w.status === "locked" });
+      onToast(w.status === "locked" ? "Đã kích hoạt nơi làm việc" : "Đã ngừng nơi làm việc", w.name);
+      if (onRefresh) await onRefresh();
+    } catch (e) {
+      onToast("Thao tác thất bại", e.message, "danger");
+    }
   };
 
   const typeTone = { "Trụ sở chính": "accent", "Chi nhánh": "info" };
@@ -844,4 +971,4 @@ function WorkplacesView({ onToast, workplaces, setWorkplaces, accounts }) {
   );
 }
 
-window.SaGovernance = { AccountsView, PermissionsView, AuditView, WorkplacesView };
+window.SaGovernance = { AccountsView, PermissionsView, AuditView, WorkplacesView, fetchAccountsAdapted, fetchWorkplacesAdapted };

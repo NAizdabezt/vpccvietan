@@ -9,21 +9,30 @@
    ========================================================================== */
 const { useState: useSx, useMemo: useMemoSx } = React;
 
-/* ---- Hôm nay (demo cố định) ---- */
-const VA_TODAY = "2026-06-14";
+/* ---- Hôm nay: ngày thật của hệ thống (không còn hardcode "2026-06-14") —
+   bắt buộc phải đổi vì dữ liệu Hồ sơ giờ đến từ backend thật (ngày tạo thật),
+   hardcode ngày cũ sẽ làm mọi hồ sơ Hoàn thành hôm nay bị lọc nhầm khỏi Luồng
+   tổng quan. Dữ liệu mock cũ trong VA_ALL_SESSIONS bên dưới chỉ còn dùng cho
+   CompletedScreen (chưa nối API thật) nên không phụ thuộc giá trị cố định này. */
+const VA_TODAY = (() => {
+  const d = new Date();
+  const p = (n) => String(n).padStart(2, "0");
+  return `${d.getFullYear()}-${p(d.getMonth() + 1)}-${p(d.getDate())}`;
+})();
 
-/* ---- Bộ trạng thái phiên (đã nghiên cứu lại) ----
-   Thứ tự pipeline: nháp → soạn → cấp số&thu phí → chốt số CC → gắn file → hoàn thành
+/* ---- Bộ trạng thái phiên ----
+   Thứ tự pipeline: nháp → soạn → cấp số&thu phí → số hóa & đẩy CMC → hoàn thành
+   "waitAttach" gộp chung việc chốt số công chứng (gán CCV nếu thiếu) + scan + đẩy CMC
+   thành MỘT bước atomic — không còn đẩy dữ liệu CMC trước khi có file đính kèm đầy đủ.
    c = màu nhận diện riêng cho từng trạng thái. */
 const SESSION_STATUS = {
-  draft:         { label: "Lưu nháp",               short: "Nháp",        icon: "FileText",    c: "#64748b", step: 0 },
-  drafting:      { label: "Đang soạn thảo",         short: "Soạn thảo",   icon: "PenLine",     c: "#d97706", step: 1 },
-  waitNumberPay: { label: "Chờ cấp số & thu phí",   short: "Cấp số/phí",  icon: "Hash",        c: "#2563eb", step: 2 },
-  waitFinalize:  { label: "Chờ chốt số công chứng", short: "Chốt số CC",  icon: "BadgeCheck",  c: "#7c3aed", step: 3 },
-  waitAttach:    { label: "Chờ gắn file",           short: "Gắn file",    icon: "Paperclip",   c: "#0891b2", step: 4 },
-  done:          { label: "Hoàn thành",             short: "Hoàn thành",  icon: "CircleCheck", c: "#16a34a", step: 5 },
+  draft:         { label: "Lưu nháp",                 short: "Nháp",        icon: "FileText",    c: "#64748b", step: 0 },
+  drafting:      { label: "Đang soạn thảo",           short: "Soạn thảo",   icon: "PenLine",     c: "#d97706", step: 1 },
+  waitNumberPay: { label: "Chờ cấp số & thu phí",     short: "Cấp số/phí",  icon: "Hash",        c: "#2563eb", step: 2 },
+  waitAttach:    { label: "Chờ số hóa & đẩy CMC",     short: "Số hóa/CMC",  icon: "ScanLine",    c: "#0891b2", step: 3 },
+  done:          { label: "Hoàn thành",               short: "Hoàn thành",  icon: "CircleCheck", c: "#16a34a", step: 4 },
 };
-const STATUS_ORDER = ["draft", "drafting", "waitNumberPay", "waitFinalize", "waitAttach", "done"];
+const STATUS_ORDER = ["draft", "drafting", "waitNumberPay", "waitAttach", "done"];
 const CARRYOVER_C = "#dc2626";
 
 /* ---- Dữ liệu phiên (gồm hôm nay + tồn đọng + đã hoàn thành) ----
@@ -34,15 +43,15 @@ const VA_ALL_SESSIONS = [
   { id: "PGD-2026-0614-031", customer: "VŨ THỊ KIM ANH",      date: "2026-06-14", createdAt: "14/06/2026 · 08:12", updatedAt: "14/06/2026 · 09:40", status: "drafting",      creator: "Trần Thị Mỹ Linh", lockedBy: "Trần Thị Mỹ Linh", lockedAt: "14/06/2026 · 09:40", secretary: "Trần Thị Mỹ Linh", notary: "", types: ["HĐ Chuyển nhượng QSDĐ"], photos: 0 },
   { id: "PGD-2026-0614-029", customer: "HOÀNG MINH ĐỨC",      date: "2026-06-14", createdAt: "14/06/2026 · 08:25", updatedAt: "14/06/2026 · 08:31", status: "draft",         creator: "Phan Thanh Hải",   secretary: "Phan Thanh Hải",  notary: "", types: ["Văn bản ủy quyền"], photos: 0 },
   { id: "PGD-2026-0614-027", customer: "ĐẶNG THU TRANG",      date: "2026-06-14", createdAt: "14/06/2026 · 08:48", updatedAt: "14/06/2026 · 09:05", status: "waitNumberPay", creator: "Trần Thị Mỹ Linh", secretary: "Trần Thị Mỹ Linh", notary: "CCV Nguyễn Quốc Việt", types: ["HĐ Mua bán xe"], photos: 0 },
-  { id: "PGD-2026-0614-024", customer: "BÙI VĂN KHÔI",        date: "2026-06-14", createdAt: "14/06/2026 · 09:02", updatedAt: "14/06/2026 · 09:33", status: "waitFinalize",  creator: "Phan Thanh Hải",   secretary: "Phan Thanh Hải",  notary: "CCV Lê Thị Hằng", types: ["HĐ Tặng cho QSDĐ"], photos: 0, ccNumber: "0036-001965-2026" },
-  { id: "PGD-2026-0614-019", customer: "LƯƠNG THẾ VINH",       date: "2026-06-14", createdAt: "14/06/2026 · 09:30", updatedAt: "14/06/2026 · 10:05", status: "waitFinalize",  creator: "Võ Ngọc Hân",      secretary: "Võ Ngọc Hân",     notary: "", types: ["HĐ Chuyển nhượng QSDĐ"], photos: 1, ccNumber: "0036-001974-2026" },
+  { id: "PGD-2026-0614-024", customer: "BÙI VĂN KHÔI",        date: "2026-06-14", createdAt: "14/06/2026 · 09:02", updatedAt: "14/06/2026 · 09:33", status: "waitAttach",    creator: "Phan Thanh Hải",   secretary: "Phan Thanh Hải",  notary: "CCV Lê Thị Hằng", types: ["HĐ Tặng cho QSDĐ"], photos: 0, ccNumber: "0036-001965-2026" },
+  { id: "PGD-2026-0614-019", customer: "LƯƠNG THẾ VINH",       date: "2026-06-14", createdAt: "14/06/2026 · 09:30", updatedAt: "14/06/2026 · 10:05", status: "waitAttach",    creator: "Võ Ngọc Hân",      secretary: "Võ Ngọc Hân",     notary: "", types: ["HĐ Chuyển nhượng QSDĐ"], photos: 1, ccNumber: "0036-001974-2026" },
   { id: "PGD-2026-0614-021", customer: "PHẠM THỊ BÍCH HẰNG",  date: "2026-06-14", createdAt: "14/06/2026 · 09:14", updatedAt: "14/06/2026 · 09:52", status: "waitAttach",    creator: "Trần Thị Mỹ Linh", secretary: "Trần Thị Mỹ Linh", notary: "CCV Nguyễn Quốc Việt", types: ["HĐ Chuyển nhượng QSDĐ"], photos: 0, ccNumber: "0036-001972-2026" },
   { id: "PGD-2026-0614-016", customer: "NGÔ GIA BẢO",         date: "2026-06-14", createdAt: "14/06/2026 · 09:20", updatedAt: "14/06/2026 · 09:58", status: "waitAttach",    creator: "Võ Ngọc Hân",      secretary: "Võ Ngọc Hân",     notary: "CCV Lê Thị Hằng", types: ["Văn bản ủy quyền"], photos: 0, ccNumber: "0036-001969-2026" },
   { id: "PGD-2026-0614-011", customer: "ĐỖ MẠNH CƯỜNG",       date: "2026-06-14", createdAt: "14/06/2026 · 08:05", updatedAt: "14/06/2026 · 09:10", status: "done",          creator: "Phan Thanh Hải",   secretary: "Phan Thanh Hải",  notary: "CCV Nguyễn Quốc Việt", types: ["HĐ Mua bán xe"], photos: 2, ccNumber: "0036-001961-2026", completedAt: "14/06/2026 · 09:10" },
 
   /* ----- TỒN ĐỌNG (chưa hoàn thành từ các hôm trước) ----- */
   { id: "PGD-2026-0613-044", customer: "TRƯƠNG CÔNG ĐỊNH",    date: "2026-06-13", createdAt: "13/06/2026 · 16:05", updatedAt: "13/06/2026 · 16:40", status: "waitAttach",    creator: "Trần Thị Mỹ Linh", secretary: "Trần Thị Mỹ Linh", notary: "CCV Nguyễn Quốc Việt", types: ["HĐ Tặng cho QSDĐ"], photos: 0, ccNumber: "0036-001948-2026" },
-  { id: "PGD-2026-0612-038", customer: "LÝ HẢI YẾN",          date: "2026-06-12", createdAt: "12/06/2026 · 14:18", updatedAt: "12/06/2026 · 15:02", status: "waitFinalize",  creator: "Phan Thanh Hải",   secretary: "Phan Thanh Hải",  notary: "CCV Trần Đình Phúc", types: ["Văn bản ủy quyền"], photos: 0, ccNumber: "0036-001955-2026" },
+  { id: "PGD-2026-0612-038", customer: "LÝ HẢI YẾN",          date: "2026-06-12", createdAt: "12/06/2026 · 14:18", updatedAt: "12/06/2026 · 15:02", status: "waitAttach",    creator: "Phan Thanh Hải",   secretary: "Phan Thanh Hải",  notary: "CCV Trần Đình Phúc", types: ["Văn bản ủy quyền"], photos: 0, ccNumber: "0036-001955-2026" },
   { id: "PGD-2026-0611-021", customer: "MAI THANH SƠN",       date: "2026-06-11", createdAt: "11/06/2026 · 10:22", updatedAt: "11/06/2026 · 11:15", status: "drafting",      creator: "Phần Thanh Hải",   secretary: "Võ Ngọc Hân",     notary: "", types: ["HĐ Chuyển nhượng QSDĐ"], photos: 0 },
   { id: "PGD-2026-0610-024", customer: "TRẦN QUỐC TOẢN",      date: "2026-06-10", createdAt: "10/06/2026 · 09:35", updatedAt: "10/06/2026 · 10:48", status: "waitNumberPay", creator: "Võ Ngọc Hân",      secretary: "Võ Ngọc Hân",     notary: "CCV Lê Thị Hằng", types: ["HĐ Mua bán xe"], photos: 0 },
 
@@ -245,7 +254,7 @@ function MiniPhoto({ hue, size }) {
 
 /* ============================================================================
    Modal: Kế toán xuất hóa đơn điện tử cho phiên (sau khi đã thu phí).
-   Mở từ Luồng tổng quan trên phiên Chờ chốt số / Đợi đẩy file / Hoàn thành.
+   Mở từ Luồng tổng quan trên phiên Chờ số hóa & đẩy CMC / Hoàn thành.
    ========================================================================== */
 function InvoiceModal({ session, onClose, onConfirm }) {
   const L = window.LucideReact;
@@ -349,7 +358,7 @@ function ChargeModal({ session, onClose, onConfirm }) {
 
 /* ============================================================================
    Modal: CCV chụp ảnh tại quầy — gắn vào hồ sơ & tự gán tên CCV phụ trách.
-   Dùng cho phiên đang "Chờ cấp số & thu phí" / "Chờ chốt số công chứng".
+   Dùng cho phiên đang "Chờ cấp số & thu phí" / "Chờ số hóa & đẩy CMC".
    ========================================================================== */
 function CaptureModal({ session, ccvName, onClose, onConfirm }) {
   const L = window.LucideReact;
@@ -401,8 +410,8 @@ function CaptureModal({ session, ccvName, onClose, onConfirm }) {
 }
 
 /* ============================================================================
-   Modal: Số hóa & gắn file vào hồ sơ (Lưu trữ viên) — bước gần cuối.
-   Hồ sơ đã có số CC + CCV; chỉ còn quét bản giấy đính kèm để hoàn tất.
+   Modal: Số hóa & đẩy CMC (Lưu trữ viên) — bước cuối, thao tác nhanh từ Luồng tổng quan.
+   Hồ sơ đã có số CC + CCV; quét xong mới coi là đủ điều kiện đẩy CMC (atomic, không tách rời).
    ========================================================================== */
 function ScanAttachModal({ session, onClose, onConfirm }) {
   const L = window.LucideReact;
@@ -416,7 +425,7 @@ function ScanAttachModal({ session, onClose, onConfirm }) {
         <div style={{ display: "flex", alignItems: "center", gap: 10, padding: "13px 16px", borderBottom: "1px solid var(--border-default)" }}>
           <span style={{ width: 30, height: 30, borderRadius: 8, display: "grid", placeItems: "center", background: "var(--accent-muted)" }}><L.ScanLine size={16} color="var(--accent)" /></span>
           <div style={{ flex: 1, minWidth: 0 }}>
-            <div style={{ fontSize: 14.5, fontWeight: 600 }}>Số hóa &amp; gắn file vào hồ sơ</div>
+            <div style={{ fontSize: 14.5, fontWeight: 600 }}>Số hóa &amp; đẩy CMC</div>
             <div style={{ fontSize: 11.5, color: "var(--text-tertiary)", fontFamily: "var(--font-mono)" }}>{session.id} · {session.customer}</div>
           </div>
           <button type="button" onClick={onClose} style={{ width: 30, height: 30, border: "none", background: "transparent", borderRadius: 7, cursor: "pointer", display: "grid", placeItems: "center", color: "var(--text-tertiary)" }}><L.X size={18} /></button>
@@ -432,13 +441,13 @@ function ScanAttachModal({ session, onClose, onConfirm }) {
             </span>
             <div style={{ flex: 1 }}>
               <div style={{ fontSize: 13, fontWeight: 600 }}>{pages > 0 ? pages + " trang đã số hóa" : "Đặt bản giấy lên máy scan"}</div>
-              <div style={{ fontSize: 12, color: "var(--text-tertiary)", marginTop: 2 }}>Quét bản hợp đồng/giấy tờ đã ký để đính kèm vào hồ sơ điện tử.</div>
+              <div style={{ fontSize: 12, color: "var(--text-tertiary)", marginTop: 2 }}>Quét bản hợp đồng/giấy tờ đã ký — chỉ khi đủ file mới được đẩy CMC.</div>
             </div>
             <Button variant="secondary" size="sm" icon={L.ScanLine} onClick={scan}>{pages > 0 ? "Quét thêm" : "Quét tài liệu"}</Button>
           </div>
           <div style={{ display: "flex", gap: 10 }}>
             <Button variant="secondary" onClick={onClose}>Hủy</Button>
-            <Button variant="primary" icon={L.Paperclip} fullWidth disabled={pages === 0} onClick={() => onConfirm(pages)}>Gắn vào hồ sơ &amp; hoàn thành</Button>
+            <Button variant="primary" icon={L.CloudUpload} fullWidth disabled={pages === 0} onClick={() => onConfirm(pages)}>Gắn file &amp; đẩy CMC</Button>
           </div>
         </div>
       </div>
@@ -912,7 +921,7 @@ function SessionRow({ s, last, currentUser, canAttach, onAttach, canCapture, onC
   if (onOpen) {
     if (editable && lockedByOther) {
       actionEl = <span style={{ display: "inline-flex", alignItems: "center", gap: 5, fontSize: 12, color: "var(--text-disabled)" }}><L.Lock size={13} /> Đang bị khóa</span>;
-    } else if (s.status === "waitFinalize" || s.status === "waitAttach" || s.status === "done") {
+    } else if (s.status === "waitAttach" || s.status === "done") {
       actionEl = <Button variant="secondary" size="sm" icon={L.Eye} onClick={() => onView(s)}>Xem</Button>;
     } else if (s.status === "waitNumberPay") {
       actionEl = <Button variant="secondary" size="sm" icon={L.Pencil} onClick={() => onOpen(s)}>Mở &amp; sửa</Button>;
@@ -962,7 +971,7 @@ function SessionRow({ s, last, currentUser, canAttach, onAttach, canCapture, onC
       </td>
       <td style={{ ...td, textAlign: "right", whiteSpace: "nowrap" }}>
         <div style={{ display: "inline-flex", alignItems: "center", gap: 8, justifyContent: "flex-end" }}>
-          {canInvoice && ["waitFinalize", "waitAttach", "done"].includes(s.status) && (
+          {canInvoice && ["waitAttach", "done"].includes(s.status) && (
             s.invoiced
               ? <span style={{ display: "inline-flex", alignItems: "center", gap: 5, fontSize: 11.5, fontWeight: 600, color: "#16a34a", background: "color-mix(in srgb, #16a34a 12%, transparent)", border: "1px solid color-mix(in srgb, #16a34a 26%, transparent)", borderRadius: "var(--radius-full)", padding: "4px 10px" }}><L.CheckCircle2 size={12} /> Đã xuất HĐ</span>
               : (s.status === "done" && daysOverdue(s.date) > 1
@@ -972,7 +981,7 @@ function SessionRow({ s, last, currentUser, canAttach, onAttach, canCapture, onC
           {canCharge && s.status === "waitNumberPay" && (
             <Button variant="primary" size="sm" icon={L.ReceiptText} onClick={() => onCharge(s)}>Cấp số &amp; thu phí</Button>
           )}
-          {canCapture && (s.status === "waitNumberPay" || s.status === "waitFinalize") && (
+          {canCapture && (s.status === "waitNumberPay" || s.status === "waitAttach") && (
             <button type="button" title="Chụp ảnh & gắn vào hồ sơ" onClick={() => onCapture(s)} style={{
               display: "inline-flex", alignItems: "center", gap: 6, height: 32, padding: "0 11px", borderRadius: "var(--radius-md)",
               border: "1px solid var(--accent-border)", background: "var(--accent-muted)", color: "var(--accent-hover)",
@@ -1029,7 +1038,10 @@ function SessionTable({ title, icon, accent, items, ...rowProps }) {
 function OverviewScreen({ role, currentUser, canCreate, canAttach, canCapture, canCharge, canInvoice, onNew, onOpen }) {
   const L = window.LucideReact;
   const { Button, Toast } = window.FSICheckinDesignSystem_019df8;
-  const [base, setBase] = useSx(() => VA_ALL_SESSIONS.map((s) => ({ ...s, invoiced: s.invoiced != null ? s.invoiced : (s.status === "done" && s.date < VA_TODAY) })));
+  // Nguồn dữ liệu dùng CHUNG qua API thật (window.VAStore) — không còn seed tĩnh
+  // từ VA_ALL_SESSIONS riêng cho từng màn hình (đây là chỗ trước đây gây desync
+  // giữa Luồng tổng quan và Lưu trữ khi thao tác ở màn này không phản ánh sang màn kia).
+  const base = window.VAStore.useHoSoStore();
   const [q, setQ] = useSx("");
   const [filter, setFilter] = useSx("all");
   const [capTarget, setCapTarget] = useSx(null);
@@ -1067,52 +1079,56 @@ function OverviewScreen({ role, currentUser, canCreate, canAttach, canCapture, c
   // Số liệu tóm tắt (trên toàn luồng, không phụ thuộc bộ lọc)
   const carryCount = inFlow.filter((s) => s.status !== "done" && daysOverdue(s.date) > 0).length;
   const attachCount = inFlow.filter((s) => s.status === "waitAttach").length;
-  const processingCount = inFlow.filter((s) => ["drafting", "waitNumberPay", "waitFinalize"].includes(s.status)).length;
+  const processingCount = inFlow.filter((s) => ["drafting", "waitNumberPay"].includes(s.status)).length;
   const doneToday = inFlow.filter((s) => s.status === "done" && s.date === VA_TODAY).length;
 
   const counts = {}; STATUS_ORDER.forEach((k) => { counts[k] = inFlow.filter((s) => s.status === k).length; });
 
+  // Thao tác nhanh từ Luồng tổng quan — chưa nối API tạo FileScan thật (chưa có
+  // endpoint upload file, thuộc Mốc 6). Chỉ cập nhật lạc quan trong store dùng
+  // chung; dùng màn "Lưu trữ" (arc/pipeline.jsx, đã nối API thật) để thao tác thật.
   const doAttach = (pages) => {
-    const id = capTarget.id;
-    setBase((arr) => arr.map((s) => s.id === id ? {
-      ...s,
-      photos: (s.photos || 0) + pages,
-      status: "done",
-      completedAt: vaNow(),
-      updatedAt: vaNow(),
-    } : s));
-    setToast({ title: "Đã số hóa & gắn file", message: capTarget.id + " · " + pages + " trang đã đính kèm — phiên chuyển sang Hoàn thành." });
+    const id = capTarget.hoSoId;
+    window.VAStore.patchLocal(id, { photos: (capTarget.photos || 0) + pages, status: "done", completedAt: vaNow(), updatedAt: vaNow() });
+    setToast({ title: "Đã số hóa & đẩy CMC (giả lập)", message: capTarget.id + " · " + pages + " trang — chưa nối API upload file thật, xem màn Lưu trữ để thao tác đầy đủ." });
     setCapTarget(null);
     setTimeout(() => setToast(null), 3600);
   };
 
-  // CCV chụp ảnh tại quầy → gắn ảnh + tự gán CCV phụ trách
+  // CCV chụp ảnh tại quầy → gắn ảnh + tự gán CCV phụ trách (chưa nối API FileScan thật)
   const doCapture = (count) => {
-    const id = photoTarget.id;
-    setBase((arr) => arr.map((s) => s.id === id ? {
-      ...s, photos: (s.photos || 0) + count, notary: currentUser, updatedAt: vaNow(),
-    } : s));
-    setToast({ title: "Đã gắn ảnh vào hồ sơ", message: photoTarget.id + " · " + count + " ảnh — CCV phụ trách: " + currentUser.replace(/^CCV /, "") + "." });
+    const id = photoTarget.hoSoId;
+    window.VAStore.patchLocal(id, { photos: (photoTarget.photos || 0) + count, notary: currentUser, updatedAt: vaNow() });
+    setToast({ title: "Đã gắn ảnh vào hồ sơ (giả lập)", message: photoTarget.id + " · " + count + " ảnh — CCV phụ trách: " + currentUser.replace(/^CCV /, "") + "." });
     setPhotoTarget(null);
     setTimeout(() => setToast(null), 3600);
   };
 
-  // Thu ngân cấp số & thu phí → phiên sang "Chờ chốt số công chứng"
-  const doCharge = (res) => {
-    const id = chargeTarget.id;
-    setBase((arr) => arr.map((s) => s.id === id ? {
-      ...s, status: "waitFinalize", ccNumber: res && res.soCC ? res.soCC : s.ccNumber, updatedAt: vaNow(),
-    } : s));
-    setToast({ title: "Đã cấp số & thu phí", message: chargeTarget.id + (res && res.soCC ? " · số CC " + res.soCC : "") + " — phiên chuyển sang Chờ chốt số công chứng." });
+  // Thu ngân cấp số & thu phí → gọi API thật (REQ-013 Smart Hint, chống trùng số
+  // ở backend) → phiên sang thẳng "Chờ số hóa & đẩy CMC" — không còn bước chốt-số
+  // riêng: CMC chỉ nhận dữ liệu kèm file sau khi số hóa xong.
+  const doCharge = async (res) => {
+    const target = chargeTarget;
+    try {
+      const { soCc } = await window.VAApi.hoSo.capSo(target.hoSoId, {
+        soTienThucThu: res && res.thucThu != null ? res.thucThu : undefined,
+        noTienThu: !!(res && res.files && res.files.some((f) => f.debtMoney)),
+        noHoSo: !!(res && res.files && res.files.some((f) => f.debtFile)),
+      });
+      window.VAStore.patchLocal(target.hoSoId, { status: "waitAttach", ccNumber: soCc, updatedAt: vaNow() });
+      setToast({ title: "Đã cấp số & thu phí", message: target.id + " · số CC " + soCc + " — phiên chuyển sang Chờ số hóa & đẩy CMC." });
+    } catch (e) {
+      setToast({ tone: "danger", title: "Cấp số thất bại", message: e.message || "Không rõ nguyên nhân" });
+    }
     setChargeTarget(null);
     setTimeout(() => setToast(null), 3600);
   };
 
-  // Kế toán xuất hóa đơn điện tử cho phiên
+  // Kế toán xuất hóa đơn điện tử cho phiên (chưa nối API HoaDon thật, thuộc Mốc 6)
   const doInvoice = (res) => {
-    const id = invoiceTarget.id;
-    setBase((arr) => arr.map((s) => s.id === id ? { ...s, invoiced: true, updatedAt: vaNow() } : s));
-    setToast({ title: "Đã xuất hóa đơn điện tử", message: invoiceTarget.id + " · " + (res && res.amount ? res.amount.toLocaleString("vi-VN") + "₫" : "") + " — đã đẩy EasyInvoice" + (res && res.issueDate ? " (ngày xuất " + res.issueDate + ")" : "") + "." });
+    const id = invoiceTarget.hoSoId;
+    window.VAStore.patchLocal(id, { invoiced: true, updatedAt: vaNow() });
+    setToast({ title: "Đã xuất hóa đơn điện tử (giả lập)", message: invoiceTarget.id + " · " + (res && res.amount ? res.amount.toLocaleString("vi-VN") + "₫" : "") + " — đã đẩy EasyInvoice" + (res && res.issueDate ? " (ngày xuất " + res.issueDate + ")" : "") + "." });
     setInvoiceTarget(null);
     setTimeout(() => setToast(null), 3600);
   };
@@ -1181,7 +1197,7 @@ function OverviewScreen({ role, currentUser, canCreate, canAttach, canCapture, c
         ) : (
           <>
             {carry.length > 0 && <SessionTable title="Tồn đọng — chưa hoàn thành từ hôm trước" icon="AlertTriangle" accent={CARRYOVER_C} items={carry} {...rowProps} />}
-            {today.length > 0 && <SessionTable title="Hôm nay · 14/06/2026" icon="CalendarDays" items={today} {...rowProps} />}
+            {today.length > 0 && <SessionTable title={"Hôm nay · " + VA_TODAY.split("-").reverse().join("/")} icon="CalendarDays" items={today} {...rowProps} />}
           </>
         )}
       </div>
@@ -1193,7 +1209,7 @@ function OverviewScreen({ role, currentUser, canCreate, canAttach, canCapture, c
       {viewer && <SessionDetailModal session={viewer} onClose={() => setViewer(null)} />}
       {toast && (
         <div style={{ position: "fixed", right: 24, bottom: 24, zIndex: 90 }}>
-          <Toast tone="success" title={toast.title} message={toast.message} onClose={() => setToast(null)} />
+          <Toast tone={toast.tone || "success"} title={toast.title} message={toast.message} onClose={() => setToast(null)} />
         </div>
       )}
     </div>

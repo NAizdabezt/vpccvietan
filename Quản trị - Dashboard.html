@@ -24,6 +24,7 @@
 <script src="https://unpkg.com/lucide@0.460.0/dist/umd/lucide.js"></script>
 <script src="assets/lucide-react-shim.js"></script>
 <script src="_ds/fsi-checkin-design-system-019df8fd-82d2-706c-bcbd-e163bd6586ff/_ds_bundle.js"></script>
+<script src="src/api-client.jsx"></script>
 
 <script type="text/babel" src="src/admin/data.jsx"></script>
 <script type="text/babel" src="src/admin/charts.jsx"></script>
@@ -31,7 +32,7 @@
 <script type="text/babel" src="src/admin/views.jsx"></script>
 
 <script type="text/babel">
-const { useState } = React;
+const { useState, useEffect } = React;
 
 function App() {
   const D = window.ADMIN_DATA;
@@ -39,6 +40,7 @@ function App() {
   const { OverviewView, ProductivityView, FinanceView, GovernanceView, ReportsView } = window.AdminViews;
   const { Toast } = window.FSICheckinDesignSystem_019df8;
 
+  const [authed] = useState(window.VAApi.isAuthed());
   const persons = ["Tất cả nhân sự", ...D.tknv.map((t) => t.name), ...D.ccv.map((c) => c.name)];
   const [page, setPage] = useState("overview");
   const [range, setRange] = useState("month");
@@ -46,9 +48,12 @@ function App() {
   const [type, setType] = useState("Tất cả loại hồ sơ");
   const [toast, setToast] = useState(null);
 
-  const goPortal = () => { window.location.href = "Đăng nhập.html"; };
+  const goPortal = () => { window.VAApi.logout(); window.location.href = "Đăng nhập.html"; };
   const exportRpt = (name, fmt) => { setToast({ title: "Đang kết xuất " + fmt, message: name + " — đã đưa vào hàng đợi tải về." }); setTimeout(() => setToast(null), 3200); };
   const showFilter = page === "overview" || page === "productivity" || page === "finance";
+
+  useEffect(() => { if (!authed) window.location.href = "Đăng nhập.html"; }, [authed]);
+  if (!authed) return null; // đang chuyển hướng sang Đăng nhập.html
 
   let view;
   if (page === "overview") view = <OverviewView range={range} />;

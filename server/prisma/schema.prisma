@@ -1,0 +1,406 @@
+// VPCC Việt An — schema Postgres theo đúng 10 entity nghiệp vụ đã thống nhất,
+// bổ sung NoiLamViec/BieuMau/HoaDon/Tenant (không có trong bản gốc nhưng cần
+// thiết để chạy đủ các màn hình hiện có — xem ghi chú trong plan).
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+// ---------------------------------------------------------------------------
+// Tenant — tối giản, 1 dòng seed sẵn (văn phòng công chứng là đơn vị duy nhất;
+// giữ bảng này chỉ để LuongNghiepVu.tenant_id có FK hợp lệ, dự phòng mở chi nhánh).
+// ---------------------------------------------------------------------------
+model Tenant {
+  id            String          @id @default(uuid()) @db.Uuid
+  ten           String
+  createdAt     DateTime        @default(now()) @map("created_at")
+  luongNghiepVu LuongNghiepVu[]
+
+  @@map("tenant")
+}
+
+// ---------------------------------------------------------------------------
+// NoiLamViec (Workplace) — REQ-051, chưa có trong 10 entity gốc nhưng bắt buộc
+// vì NhanVien.noi_lam_viec_id cần trỏ tới đâu đó.
+// ---------------------------------------------------------------------------
+model NoiLamViec {
+  id        String     @id @default(uuid()) @db.Uuid
+  ten          String
+  loai         String?    @map("loai") // Trụ sở chính / Chi nhánh / Văn phòng đại diện / Phòng công chứng
+  diaChi       String?    @map("dia_chi")
+  soDienThoai  String?    @map("so_dien_thoai")
+  trangThai    Boolean    @default(true) @map("trang_thai")
+  createdAt    DateTime   @default(now()) @map("created_at")
+  nhanViens    NhanVien[]
+
+  @@map("noi_lam_viec")
+}
+
+enum VaiTro {
+  TKNV
+  CCV
+  THU_NGAN
+  KE_TOAN
+  LUU_TRU
+  QTHT
+  LANH_DAO
+}
+
+enum TrangThaiTaiKhoan {
+  ACTIVE
+  INACTIVE
+  LOCKED
+}
+
+// ---------------------------------------------------------------------------
+// 11.4. NhanVien — thêm mat_khau_hash (bcrypt) so với bản gốc, bắt buộc để
+// đăng nhập thật; bản gốc không có trường mật khẩu nào.
+// ---------------------------------------------------------------------------
+model NhanVien {
+  id            String            @id @default(uuid()) @db.Uuid
+  maNhanVien    String            @unique @map("ma_nhan_vien")
+  hoTen         String            @map("ho_ten")
+  vaiTro        VaiTro[]          @map("vai_tro")
+  matKhauHash   String            @map("mat_khau_hash")
+  trangThai     TrangThaiTaiKhoan @default(ACTIVE) @map("trang_thai")
+  email         String            @unique
+  lastLogin     DateTime?         @map("last_login")
+  noiLamViecId  String?           @db.Uuid @map("noi_lam_viec_id")
+  noiLamViec    NoiLamViec?       @relation(fields: [noiLamViecId], references: [id])
+  createdAt     DateTime          @default(now()) @map("created_at")
+
+  hoSoTao           HoSo[]              @relation("HoSoCreatedBy")
+  hoSoTknv          HoSo[]              @relation("HoSoTknv")
+  hoSoCcv           HoSo[]              @relation("HoSoCcv")
+  yeuCauGui         YeuCauHieuChinh[]   @relation("YeuCauNguoiGui")
+  yeuCauDuyet       YeuCauHieuChinh[]   @relation("YeuCauNguoiDuyet")
+  auditLogs         NhatKyThaoTac[]
+  uyThacDuocUyThac  UyThac[]            @relation("UyThacNguoiDuocUyThac")
+  uyThacChuToken    UyThac[]            @relation("UyThacChuToken")
+  bieuMaus          BieuMau[]
+
+  @@map("nhan_vien")
+}
+
+// ---------------------------------------------------------------------------
+// 11.2. KhachHang
+// ---------------------------------------------------------------------------
+enum OcrSource {
+  VNEID
+  CCCD_CHIP
+  MANUAL
+  IMPORT
+}
+
+model KhachHang {
+  id                 String     @id @default(uuid()) @db.Uuid
+  hoTen              String     @map("ho_ten")
+  soCccd             String?    @unique @map("so_cccd")
+  ngaySinh           DateTime?  @map("ngay_sinh") @db.Date
+  diaChiThuongTru    String?    @map("dia_chi_thuong_tru")
+  diaChiLienLac      String?    @map("dia_chi_lien_lac")
+  soDienThoai        String?    @map("so_dien_thoai")
+  email              String?
+  ocrSource          OcrSource? @map("ocr_source")
+  createdAt          DateTime   @default(now()) @map("created_at")
+
+  hoSos              HoSo[]
+
+  @@map("khach_hang")
+}
+
+// ---------------------------------------------------------------------------
+// 11.1. HoSo — trung tâm hệ thống
+// ---------------------------------------------------------------------------
+enum LoaiHoSo {
+  HOP_DONG
+  CHUNG_THUC
+  SAO_Y
+}
+
+enum TrangThaiHoSo {
+  NHAP_LIEU
+  CHO_CCV
+  CHO_THU_NGAN
+  DA_CAP_SO
+  DANG_LIEN_THONG
+  HOAN_TAT
+  LOI
+  CHO_BO_SUNG
+}
+
+model HoSo {
+  id                    String        @id @default(uuid()) @db.Uuid
+  // Mã phiên hiển thị (PGD-YYYY-MMDD-NNN) — không có trong schema gốc, cần vì
+  // UUID nội bộ không phù hợp hiển thị "Mã phiên" xuyên suốt các màn hình.
+  maPhien               String        @unique @map("ma_phien")
+  loaiHoSo              LoaiHoSo      @map("loai_ho_so")
+  soCongChung           String?       @unique @map("so_cong_chung")
+  soChungThuc           String?       @unique @map("so_chung_thuc")
+  soSaoY                String?       @unique @map("so_sao_y")
+  trangThai             TrangThaiHoSo @default(NHAP_LIEU) @map("trang_thai")
+  tknvId                String        @db.Uuid @map("tknv_id")
+  tknv                  NhanVien      @relation("HoSoTknv", fields: [tknvId], references: [id])
+  ccvId                 String?       @db.Uuid @map("ccv_id")
+  ccv                   NhanVien?     @relation("HoSoCcv", fields: [ccvId], references: [id])
+  khachHangId           String?       @db.Uuid @map("khach_hang_id")
+  khachHang             KhachHang?    @relation(fields: [khachHangId], references: [id])
+  ngayTao               DateTime      @default(now()) @map("ngay_tao")
+  ngayCongChungThucTe   DateTime?     @map("ngay_cong_chung_thuc_te") @db.Date
+  noHoSo                Boolean       @default(false) @map("no_ho_so")
+  noTienThu             Boolean       @default(false) @map("no_tien_thu")
+  phiDichVu             Decimal       @map("phi_dich_vu") @db.Decimal(15, 0)
+  soTienThucThu         Decimal?      @map("so_tien_thuc_thu") @db.Decimal(15, 0)
+  createdById           String        @db.Uuid @map("created_by")
+  createdBy             NhanVien      @relation("HoSoCreatedBy", fields: [createdById], references: [id])
+  updatedAt             DateTime      @updatedAt @map("updated_at")
+  hoaDonId              String?       @db.Uuid @map("hoa_don_id")
+  hoaDon                HoaDon?       @relation(fields: [hoaDonId], references: [id])
+
+  fileScans             FileScan[]
+  soCongChungLedger      SoCongChung[]
+  yeuCauHieuChinh        YeuCauHieuChinh[]
+  khoVatLyViTri          KhoVatLy[]
+  // n-n với BieuMau: loai_ho_so chỉ có 3 giá trị thô (HOP_DONG/CHUNG_THUC/SAO_Y),
+  // không đủ để biết hồ sơ dùng (những) mẫu hợp đồng cụ thể nào — 1 hồ sơ có thể
+  // ghép nhiều loại (vd vừa Chuyển nhượng QSDĐ vừa Ủy quyền).
+  bieuMaus              BieuMau[]
+
+  @@map("ho_so")
+}
+
+// ---------------------------------------------------------------------------
+// 11.3. FileScan — ho_so_id NULLABLE (khác bản gốc): ảnh hiện trường / văn bản
+// scan có thể tồn tại độc lập trong "Hàng chờ ảnh" trước khi được ghim vào hồ sơ.
+// ---------------------------------------------------------------------------
+enum LoaiFile {
+  VB
+  HS
+  ANH_GHI_CHU_NGOAI_LE
+  ANH_CHUP_HIEN_TRUONG
+}
+
+enum TrangThaiCmc {
+  CHO_DAY
+  DANG_DAY
+  THANH_CONG
+  LOI
+  RETRY
+}
+
+model FileScan {
+  id             String       @id @default(uuid()) @db.Uuid
+  hoSoId         String?      @db.Uuid @map("ho_so_id")
+  hoSo           HoSo?        @relation(fields: [hoSoId], references: [id])
+  loaiFile       LoaiFile     @map("loai_file")
+  tenFile        String       @map("ten_file")
+  duongDan       String       @map("duong_dan")
+  dungLuongKb    Int          @map("dung_luong_kb")
+  dinhDang       String       @default("PDF") @map("dinh_dang")
+  doPhanGiaiDpi  Int?         @map("do_phan_giai_dpi")
+  trangThaiCmc   TrangThaiCmc @default(CHO_DAY) @map("trang_thai_cmc")
+  soLanRetry     Int          @default(0) @map("so_lan_retry")
+  uploadedAt     DateTime?    @map("uploaded_at")
+  createdAt      DateTime     @default(now()) @map("created_at")
+
+  @@map("file_scan")
+}
+
+// ---------------------------------------------------------------------------
+// 11.5. KhoVatLy
+// ---------------------------------------------------------------------------
+model KhoVatLy {
+  id        String  @id @default(uuid()) @db.Uuid
+  phongKho  String  @map("phong_kho")
+  dayKe     String  @map("day_ke")
+  tangKe    String  @map("tang_ke")
+  hopCapSo  String  @map("hop_cap_so")
+  hoSoId    String? @db.Uuid @map("ho_so_id")
+  hoSo      HoSo?   @relation(fields: [hoSoId], references: [id])
+
+  @@unique([phongKho, dayKe, tangKe, hopCapSo])
+  @@map("kho_vat_ly")
+}
+
+// ---------------------------------------------------------------------------
+// 11.6. SoCongChung — sổ/ledger đầy đủ (kể cả số đã hủy/thay thế), tách biệt
+// với cột "so_cong_chung" hiện tại trên HoSo (giá trị đang hiệu lực).
+// ---------------------------------------------------------------------------
+enum TrangThaiSoCC {
+  HOAT_DONG
+  DA_HUY
+  THAY_THE
+}
+
+model SoCongChung {
+  soCc      String        @id @map("so_cc")
+  nam       Int
+  thuTu     Int           @map("thu_tu")
+  trangThai TrangThaiSoCC @default(HOAT_DONG) @map("trang_thai")
+  soThayThe String?       @map("so_thay_the")
+  ngayCap   DateTime      @default(now()) @map("ngay_cap")
+  hoSoId    String        @db.Uuid @map("ho_so_id")
+  hoSo      HoSo          @relation(fields: [hoSoId], references: [id])
+
+  @@unique([nam, thuTu])
+  @@map("so_cong_chung")
+}
+
+// ---------------------------------------------------------------------------
+// 11.7. YeuCauHieuChinh
+// ---------------------------------------------------------------------------
+enum LoaiHieuChinh {
+  SUA_TT
+  SUA_SO_CC
+  HUY_SO
+  IN_KY_LAI
+}
+
+enum TrangThaiYeuCau {
+  CHO_DUYET
+  DA_DUYET
+  TU_CHOI
+}
+
+model YeuCauHieuChinh {
+  id           String          @id @default(uuid()) @db.Uuid
+  hoSoId       String          @db.Uuid @map("ho_so_id")
+  hoSo         HoSo            @relation(fields: [hoSoId], references: [id])
+  loai         LoaiHieuChinh
+  giaTriCu     String?         @map("gia_tri_cu")
+  giaTriMoi    String?         @map("gia_tri_moi")
+  lyDo         String          @map("ly_do")
+  nguoiGuiId   String          @db.Uuid @map("nguoi_gui_id")
+  nguoiGui     NhanVien        @relation("YeuCauNguoiGui", fields: [nguoiGuiId], references: [id])
+  nguoiDuyetId String?         @db.Uuid @map("nguoi_duyet_id")
+  nguoiDuyet   NhanVien?       @relation("YeuCauNguoiDuyet", fields: [nguoiDuyetId], references: [id])
+  trangThai    TrangThaiYeuCau @default(CHO_DUYET) @map("trang_thai")
+  thoiGian     DateTime        @default(now()) @map("thoi_gian")
+
+  @@map("yeu_cau_hieu_chinh")
+}
+
+// ---------------------------------------------------------------------------
+// 11.8. NhatKyThaoTac (Audit Log) — append-only: không route update/delete
+// nào được viết cho model này (thực thi ở tầng ứng dụng + middleware/audit.js).
+// ---------------------------------------------------------------------------
+enum KetQuaAudit {
+  HOAN_TAT
+  DA_DONG_BO_CMC
+  CHO_DUYET
+  TU_CHOI
+}
+
+model NhatKyThaoTac {
+  id               String      @id @default(uuid()) @db.Uuid
+  thoiGian         DateTime    @default(now()) @map("thoi_gian")
+  nguoiThucHienId  String      @db.Uuid @map("nguoi_thuc_hien_id")
+  nguoiThucHien    NhanVien    @relation(fields: [nguoiThucHienId], references: [id])
+  loaiThaoTac      String      @map("loai_thao_tac")
+  doiTuong         String      @map("doi_tuong")
+  giaTriCu         String?     @map("gia_tri_cu")
+  giaTriMoi        String?     @map("gia_tri_moi")
+  tokenSuDung      String?     @map("token_su_dung")
+  ipThietBi        String?     @map("ip_thiet_bi")
+  ketQua           KetQuaAudit @map("ket_qua")
+  maBam            String      @unique @map("ma_bam")
+
+  @@map("nhat_ky_thao_tac")
+}
+
+// ---------------------------------------------------------------------------
+// 11.9. UyThac (Delegation)
+// ---------------------------------------------------------------------------
+enum TrangThaiUyThac {
+  CON_HIEU_LUC
+  DA_THU_HOI
+}
+
+model UyThac {
+  id                String          @id @default(uuid()) @db.Uuid
+  nguoiDuocUyThacId String          @db.Uuid @map("nguoi_duoc_uy_thac_id")
+  nguoiDuocUyThac   NhanVien        @relation("UyThacNguoiDuocUyThac", fields: [nguoiDuocUyThacId], references: [id])
+  ccvChuTokenId     String          @db.Uuid @map("ccv_chu_token_id")
+  ccvChuToken       NhanVien        @relation("UyThacChuToken", fields: [ccvChuTokenId], references: [id])
+  phamVi            Json            @map("pham_vi")
+  thoiHan           DateTime        @map("thoi_han") @db.Date
+  trangThai         TrangThaiUyThac @default(CON_HIEU_LUC) @map("trang_thai")
+  createdAt         DateTime        @default(now()) @map("created_at")
+
+  @@map("uy_thac")
+}
+
+// ---------------------------------------------------------------------------
+// 11.10. LuongNghiepVu (Workflow Definition)
+// ---------------------------------------------------------------------------
+enum TrangThaiWorkflow {
+  NHAP
+  DANG_AP_DUNG
+  DA_LUU_TRU
+}
+
+model LuongNghiepVu {
+  id           String            @id @default(uuid()) @db.Uuid
+  ten          String
+  tenantId     String            @db.Uuid @map("tenant_id")
+  tenant       Tenant            @relation(fields: [tenantId], references: [id])
+  phienBan     Int               @default(1) @map("phien_ban")
+  trangThai    TrangThaiWorkflow @default(NHAP) @map("trang_thai")
+  danhSachBuoc Json              @map("danh_sach_buoc")
+  createdAt    DateTime          @default(now()) @map("created_at")
+  updatedAt    DateTime          @updatedAt @map("updated_at")
+
+  @@map("luong_nghiep_vu")
+}
+
+// ---------------------------------------------------------------------------
+// BieuMau (Template) — không có trong 10 entity gốc, cần cho REQ-004 / kho
+// biểu mẫu (src/templates-data.jsx đang persist qua localStorage).
+// ---------------------------------------------------------------------------
+model BieuMau {
+  id          String    @id @default(uuid()) @db.Uuid
+  ten         String
+  nhom        String?
+  loai        String?
+  builtin     Boolean   @default(false)
+  phiMacDinh  Decimal?  @map("phi_mac_dinh") @db.Decimal(15, 0)
+  noiDung     Json      @map("noi_dung")
+  taoBoiId    String?   @db.Uuid @map("tao_boi_id")
+  taoBoi      NhanVien? @relation(fields: [taoBoiId], references: [id])
+  tenFile     String?   @map("ten_file")
+  createdAt   DateTime  @default(now()) @map("created_at")
+  hoSos       HoSo[]
+
+  @@map("bieu_mau")
+}
+
+// ---------------------------------------------------------------------------
+// HoaDon (Invoice) — không có trong 10 entity gốc, cần cho REQ-021/022/023
+// (Auto-grouping hóa đơn — pos/accounting.jsx). Một hóa đơn gộp nhiều HoSo.
+// ---------------------------------------------------------------------------
+enum TrangThaiHoaDon {
+  CHO_PHAT_HANH
+  DA_PHAT_HANH
+  LOI
+}
+
+model HoaDon {
+  id           String          @id @default(uuid()) @db.Uuid
+  tenKhach     String          @map("ten_khach")
+  diaChi       String?         @map("dia_chi")
+  maSoThue     String?         @map("ma_so_thue")
+  tongTien     Decimal         @map("tong_tien") @db.Decimal(15, 0)
+  ngayGiaoDich DateTime        @map("ngay_giao_dich") @db.Date
+  ngayXuat     DateTime        @map("ngay_xuat") @db.Date
+  trangThai    TrangThaiHoaDon @default(CHO_PHAT_HANH) @map("trang_thai")
+  loiChiTiet   String?         @map("loi_chi_tiet")
+  createdAt    DateTime        @default(now()) @map("created_at")
+
+  hoSos        HoSo[]
+
+  @@map("hoa_don")
+}

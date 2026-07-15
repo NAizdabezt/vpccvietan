@@ -1,0 +1,18 @@
+# Cách chạy Postgres thay thế qua Docker — dự án hiện đang dùng PostgreSQL 16
+# cài native trên máy (Docker Desktop bị treo lúc thiết lập). Nếu Docker ổn định
+# trở lại, `docker compose up -d` rồi đổi DATABASE_URL trong .env sang user "vpcc".
+services:
+  postgres:
+    image: postgres:16
+    restart: unless-stopped
+    environment:
+      POSTGRES_USER: vpcc
+      POSTGRES_PASSWORD: vpcc_dev_password
+      POSTGRES_DB: vpcc_viet_an
+    ports:
+      - "5432:5432"
+    volumes:
+      - vpcc_pgdata:/var/lib/postgresql/data
+
+volumes:
+  vpcc_pgdata:

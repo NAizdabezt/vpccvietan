@@ -33,9 +33,10 @@
 <script src="https://unpkg.com/lucide@0.460.0/dist/umd/lucide.js"></script>
 <script src="assets/lucide-react-shim.js"></script>
 <script src="_ds/fsi-checkin-design-system-019df8fd-82d2-706c-bcbd-e163bd6586ff/_ds_bundle.js"></script>
+<script src="src/api-client.jsx"></script>
+<script type="text/babel" src="src/session-store.jsx"></script>
 
 <script type="text/babel" src="tweaks-panel.jsx"></script>
-<script type="text/babel" src="src/login.jsx"></script>
 <script type="text/babel" src="src/arc/data.jsx"></script>
 <script type="text/babel" src="src/arc/shell.jsx"></script>
 <script type="text/babel" src="src/sessions.jsx"></script>
@@ -53,30 +54,29 @@ const TWEAK_DEFAULTS = /*EDITMODE-BEGIN*/{
 
 function App() {
   const [t, setTweak] = useTweaks(TWEAK_DEFAULTS);
-  const paramRole = new URLSearchParams(window.location.search).get("role");
-  const [authed, setAuthed] = useState(!!paramRole);
-  const [page, setPage] = useState("finalize");
+  const nv = window.VAApi.getUser();
+  const [authed] = useState(window.VAApi.isAuthed());
+  const [page, setPage] = useState("scan");
 
   const { ArcSidebar, ArcTopbar } = window.ARCShell;
-  const { Login } = window;
   const { OverviewScreen, CompletedScreen } = window.VASessions;
-  const goPortal = () => { window.location.href = "Đăng nhập.html"; };
-  const { FinalizeScreen, ScanScreen } = window.ARCPipeline;
+  const goPortal = () => { window.VAApi.logout(); window.location.href = "Đăng nhập.html"; };
+  const { ScanScreen } = window.ARCPipeline;
   const { WarehouseScreen } = window.ARCWarehouse;
   const { CMCScreen } = window.ARCCmc;
 
+  useEffect(() => { if (!authed) window.location.href = "Đăng nhập.html"; }, [authed]);
   useEffect(() => {
     const r = document.documentElement;
     r.style.setProperty("--accent", t.accent);
     r.style.setProperty("--accent-hover", t.accent === "#2563eb" ? "#1d4ed8" : t.accent === "#2E3192" ? "#252873" : "#15803d");
   }, [t.accent]);
 
-  if (!authed) return <Login onLogin={() => setAuthed(true)} />;
+  if (!authed) return null; // đang chuyển hướng sang Đăng nhập.html
 
   let content;
-  if (page === "overview") content = <OverviewScreen role="arc" currentUser="Hoàng Minh Tuấn" canCreate={false} canAttach={false} />;
+  if (page === "overview") content = <OverviewScreen role="arc" currentUser={nv ? nv.hoTen : ""} canCreate={false} canAttach={false} />;
   else if (page === "completed") content = <CompletedScreen role="arc" />;
-  else if (page === "finalize") content = <FinalizeScreen />;
   else if (page === "scan") content = <ScanScreen />;
   else if (page === "cmc") content = <CMCScreen />;
   else content = <WarehouseScreen />;
