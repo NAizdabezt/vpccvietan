@@ -26,6 +26,14 @@
 <script src="https://unpkg.com/lucide@0.460.0/dist/umd/lucide.js"></script>
 <script src="assets/lucide-react-shim.js"></script>
 <script src="_ds/fsi-checkin-design-system-019df8fd-82d2-706c-bcbd-e163bd6586ff/_ds_bundle.js"></script>
+<script>
+  // Deploy thật (GitHub Pages) không tự có backend — trỏ thẳng về backend đã
+  // host công khai (Render). Khi chạy local (serve/localhost) giữ nguyên mặc
+  // định http://localhost:4000 trong src/api-client.jsx, không đổi gì cả.
+  if (location.hostname.endsWith("github.io")) {
+    window.VA_API_BASE = "https://vpcc-vietan-backend.onrender.com";
+  }
+</script>
 <script src="src/api-client.jsx"></script>
 <script type="text/babel" src="src/session-store.jsx"></script>
 
