@@ -114,14 +114,15 @@ function FlowA({ density, session, onExit, onStatus, onMeta, mode, role, current
 
   const go = (n) => { const v = Math.max(0, Math.min(4, n)); setStep(v); setMaxReached((m) => Math.max(m, v)); };
 
+  // r = 1 bản ghi KhachHang thật (kèm hoSos gần nhất) từ ReturningSearch — không
+  // còn "type" đơn lẻ như dữ liệu bịa trước đây (1 khách có thể có nhiều hồ sơ
+  // nhiều loại khác nhau) nên không tự thêm biểu mẫu; chỉ nạp thông tin khách.
   const reuseRecord = (r) => {
     if (ro) return;
-    setCustomer(r.customer);
-    setQuery(r.customer);
+    setCustomer(r.hoTen);
+    setQuery(r.hoTen);
     setReusedFrom(r);
-    const tpl = TPLS.find((x) => x.name === r.type);
-    if (tpl && !picked.find((p) => p.id === tpl.id)) setPicked((p) => [...p, { id: tpl.id, tid: tpl.id, name: tpl.name, group: tpl.group, kind: tpl.kind }]);
-    setToast({ title: "Đã nạp thông tin khách cũ", message: r.customer + " — từ hồ sơ " + r.id + (tpl ? " · đã thêm biểu mẫu “" + tpl.name + "”" : "") });
+    setToast({ title: "Đã nạp thông tin khách cũ", message: r.hoTen + (r.soCccd ? " · CCCD " + r.soCccd : "") + (r.hoSos && r.hoSos.length ? " · " + r.hoSos.length + " hồ sơ trước đó" : "") });
   };
 
   React.useEffect(() => { if (onMeta) onMeta({ customer: customer, types: picked.map((p) => p.name) }); }, [customer, picked]);
@@ -161,7 +162,12 @@ function FlowA({ density, session, onExit, onStatus, onMeta, mode, role, current
   // hiện có đều là dạng hợp đồng, UI chưa có lựa chọn Chứng thực/Sao y.
   const ensureHoSo = async () => {
     if (hoSoId) return hoSoId;
-    const kh = await window.VAApi.khachHang.create({ hoTen: customer.trim() });
+    // Khách đã chọn "Dùng lại thông tin" (và chưa sửa lại tên) → dùng thẳng
+    // khachHangId có sẵn, tránh tạo trùng bản ghi KhachHang cho cùng 1 người mỗi
+    // lần khởi tạo phiên mới (trước đây luôn create() vô điều kiện).
+    const kh = (reusedFrom && reusedFrom.hoTen === customer.trim())
+      ? reusedFrom
+      : await window.VAApi.khachHang.create({ hoTen: customer.trim() });
     const row = await window.VAApi.hoSo.create({
       loaiHoSo: "HOP_DONG",
       khachHangId: kh.id,
@@ -248,9 +254,9 @@ function FlowA({ density, session, onExit, onStatus, onMeta, mode, role, current
             <span style={{ marginLeft: "auto", fontSize: 12, color: "var(--text-tertiary)" }}>{session.createdAt || D.session.createdAt}</span>
           </div>
           <Input label="Tên khách hàng" value={customer} disabled={ro} onChange={(e) => { setCustomer(e.target.value); setQuery(e.target.value); }} placeholder="Nhập họ tên khách hàng…" />
-          {reusedFrom && (
+          {reusedFrom && reusedFrom.hoTen === customer.trim() && (
             <div style={{ display: "flex", alignItems: "center", gap: 8, fontSize: 12, color: "var(--text-info)", padding: "8px 11px", background: "var(--bg-info)", border: "1px solid var(--border-info)", borderRadius: "var(--radius-md)" }}>
-              <L.UserCheck size={14} style={{ flexShrink: 0 }} /> Khách cũ — nạp từ hồ sơ <b style={{ fontFamily: "var(--font-mono)" }}>{reusedFrom.id}</b> ({reusedFrom.type}, {reusedFrom.date}).
+              <L.UserCheck size={14} style={{ flexShrink: 0 }} /> Khách cũ — đã nạp thông tin{reusedFrom.soCccd ? <> · CCCD <b style={{ fontFamily: "var(--font-mono)" }}>{reusedFrom.soCccd}</b></> : ""}{reusedFrom.hoSos && reusedFrom.hoSos.length ? " · " + reusedFrom.hoSos.length + " hồ sơ trước đó" : ""}.
             </div>
           )}
           <div>
@@ -293,17 +299,17 @@ function FlowA({ density, session, onExit, onStatus, onMeta, mode, role, current
             <div style={{ textAlign: "center", color: "var(--text-tertiary)" }}>
               <L.ScanLine size={30} style={{ marginBottom: 8 }} />
               <div style={{ fontSize: 14, fontWeight: 600, color: "var(--text-secondary)" }}>Chưa có tài liệu</div>
-              <div style={{ fontSize: 12.5, marginTop: 2 }}>Kết nối máy scan hoặc tải ảnh từ hệ thống để bắt đầu bóc tách OCR.</div>
+              <div style={{ fontSize: 12.5, marginTop: 2 }}>Kết nối máy scan hoặc tải ảnh từ hệ thống để bắt đầu nhập giấy tờ.</div>
             </div>
           </div>
         ) : (
           <div style={{ flex: 1, display: "grid", gridTemplateColumns: "300px 1fr", gap: 16, minHeight: 0 }}>
-            <Panel title="Ảnh đã OCR" desc={D.scanImages.length + " ảnh"} pad={10} style={{ minHeight: 0 }}>
+            <Panel title="Ảnh tài liệu" desc={D.scanImages.length + " ảnh"} pad={10} style={{ minHeight: 0 }}>
               <div style={{ overflowY: "auto", minHeight: 0 }}>
                 <P.ScanGallery images={D.scanImages} activeId={activeImg} onSelect={() => {}} />
               </div>
             </Panel>
-            <Panel title="Tài liệu OCR đã bóc tách" desc={ocr.length + " tài liệu · sửa trực tiếp các trường nếu sai"} pad={12} style={{ minHeight: 0 }}>
+            <Panel title="Nhập thông tin giấy tờ" desc={ocr.length + " tài liệu · chưa có OCR thật, vui lòng nhập tay theo giấy tờ đang cầm"} pad={12} style={{ minHeight: 0 }}>
               <div style={{ overflowY: "auto", minHeight: 0, display: "flex", flexDirection: "column", gap: 10 }}>
                 {ocr.map((doc, i) => <P.EditableDoc key={doc.id} doc={doc} onField={setField} readOnly={ro} defaultOpen={i === 0} />)}
               </div>

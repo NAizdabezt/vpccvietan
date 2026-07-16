@@ -35,44 +35,47 @@ const VA_DATA = {
     address: "27 Nguyễn Thị Minh Khai, P. Bến Nghé, Q.1, TP. HCM",
   },
 
-  // Giấy tờ bóc tách OCR (đa tài liệu + VNeID)
+  // Giấy tờ bóc tách — KHÔNG có OCR thật (chưa tích hợp dịch vụ OCR nào), nên
+  // đây chỉ là khung trường dữ liệu để CCV/TKNV tự nhập tay theo giấy tờ đang
+  // cầm trên tay, KHÔNG bịa sẵn giá trị như trước (từng tự động điền tên/CCCD/
+  // thửa đất giả vào hợp đồng thật nếu người dùng quên sửa lại).
   ocrDocs: [
     {
-      id: "cccd_a", name: "CCCD — Bên A", source: "Máy scan", icon: "CreditCard",
-      status: "done", confidence: 99,
+      id: "cccd_a", name: "CCCD — Bên A", source: "Nhập tay", icon: "CreditCard",
+      status: "manual",
       fields: [
-        { fkey: "hoTen_A",  label: "Họ tên", value: "Nguyễn Văn Thành" },
-        { fkey: "cccd_A",   label: "Số định danh", value: "079079001234", mono: true },
-        { fkey: "ngaySinh_A", label: "Ngày sinh", value: "12/04/1979" },
-        { fkey: "diaChi_A", label: "Nơi thường trú", value: "142/5 Lê Văn Sỹ, P.13, Q.3, TP.HCM" },
+        { fkey: "hoTen_A",  label: "Họ tên", value: "" },
+        { fkey: "cccd_A",   label: "Số định danh", value: "", mono: true },
+        { fkey: "ngaySinh_A", label: "Ngày sinh", value: "" },
+        { fkey: "diaChi_A", label: "Nơi thường trú", value: "" },
       ],
     },
     {
-      id: "vneid_b", name: "CCCD — Bên B", source: "Tải ảnh từ hệ thống", icon: "CreditCard",
-      status: "done", confidence: 97,
+      id: "vneid_b", name: "CCCD — Bên B", source: "Nhập tay", icon: "CreditCard",
+      status: "manual",
       fields: [
-        { fkey: "hoTen_B",  label: "Họ tên", value: "Lê Thị Hồng Nhung" },
-        { fkey: "cccd_B",   label: "Số định danh", value: "079185007781", mono: true },
-        { fkey: "ngaySinh_B", label: "Ngày sinh", value: "30/09/1985" },
+        { fkey: "hoTen_B",  label: "Họ tên", value: "" },
+        { fkey: "cccd_B",   label: "Số định danh", value: "", mono: true },
+        { fkey: "ngaySinh_B", label: "Ngày sinh", value: "" },
       ],
     },
     {
-      id: "sodo", name: "Sổ hồng (GCN QSDĐ)", source: "Máy scan A4", icon: "ScrollText",
-      status: "done", confidence: 95, qr: true,
+      id: "sodo", name: "Sổ hồng (GCN QSDĐ)", source: "Nhập tay", icon: "ScrollText",
+      status: "manual", qr: true,
       fields: [
-        { fkey: "thuaDat",   label: "Thửa đất số", value: "248", mono: true },
-        { fkey: "toBanDo",   label: "Tờ bản đồ số", value: "12", mono: true },
-        { fkey: "dienTich",  label: "Diện tích", value: "86,4 m²", mono: true },
-        { fkey: "diaChiDat", label: "Địa chỉ", value: "Số 9 đường số 4, P. Tân Quy, Q.7, TP.HCM" },
+        { fkey: "thuaDat",   label: "Thửa đất số", value: "", mono: true },
+        { fkey: "toBanDo",   label: "Tờ bản đồ số", value: "", mono: true },
+        { fkey: "dienTich",  label: "Diện tích", value: "", mono: true },
+        { fkey: "diaChiDat", label: "Địa chỉ", value: "" },
       ],
     },
     {
-      id: "cavet", name: "Cà vẹt xe", source: "Máy scan", icon: "Car",
-      status: "review", confidence: 81,
+      id: "cavet", name: "Cà vẹt xe", source: "Nhập tay", icon: "Car",
+      status: "manual",
       fields: [
-        { fkey: "bienSo",   label: "Biển số", value: "51K-882.74", mono: true },
-        { fkey: "nhanHieu", label: "Nhãn hiệu", value: "Toyota Vios" },
-        { fkey: "soKhung",  label: "Số khung", value: "RL4...8821", mono: true, warn: true },
+        { fkey: "bienSo",   label: "Biển số", value: "", mono: true },
+        { fkey: "nhanHieu", label: "Nhãn hiệu", value: "" },
+        { fkey: "soKhung",  label: "Số khung", value: "", mono: true },
       ],
     },
   ],
@@ -187,98 +190,5 @@ VA_DATA.scanImages = [
   { id: "s5",  label: "Cà vẹt xe",                        doc: "cavet",   type: "Cà vẹt xe",             cat: "asset", hue: 45 },
 ];
 
-/* ---- Hồ sơ cũ / khách cũ — Mini-CRM tra cứu theo metadata ----
-   Mỗi bản ghi mang đầy đủ metadata để tìm kiếm: tên, CCCD, SĐT, địa chỉ,
-   số công chứng, loại việc, thửa/tờ đất, biển số, bên đối ứng, ngày…
-   meta[] là các trường metadata mở rộng, cũng tham gia khớp tìm kiếm. */
-VA_DATA.priorRecords = [
-  {
-    id: "0036-001892-2026", customer: "NGUYỄN VĂN THÀNH", cccd: "079079001234", dob: "12/04/1979",
-    phone: "0903 555 214", address: "142/5 Lê Văn Sỹ, P.13, Q.3, TP.HCM",
-    type: "Văn bản ủy quyền", group: "Ủy quyền", date: "21/02/2026",
-    notary: "CCV Nguyễn Quốc Việt", secretary: "Trần Thị Mỹ Linh", counterparty: "Nguyễn Thị Mai",
-    docCount: 6, status: "Đã công chứng",
-    meta: [
-      { k: "Bên nhận uỷ quyền", v: "Nguyễn Thị Mai" },
-      { k: "CCCD bên nhận", v: "079185112004", mono: true },
-      { k: "Phạm vi uỷ quyền", v: "Quản lý, sử dụng nhà đất Q.7" },
-      { k: "Quyển số", v: "03 TP/CC-SCC/HĐGD", mono: true },
-    ],
-  },
-  {
-    id: "0036-000418-2025", customer: "NGUYỄN VĂN THÀNH", cccd: "079079001234", dob: "12/04/1979",
-    phone: "0903 555 214", address: "142/5 Lê Văn Sỹ, P.13, Q.3, TP.HCM",
-    type: "HĐ Chuyển nhượng QSDĐ", group: "Bất động sản", date: "14/08/2025",
-    notary: "CCV Lê Thị Hằng", secretary: "Trần Thị Mỹ Linh", counterparty: "Trần Văn Bình",
-    docCount: 9, status: "Đã công chứng",
-    meta: [
-      { k: "Thửa đất số", v: "248", mono: true },
-      { k: "Tờ bản đồ số", v: "12", mono: true },
-      { k: "Địa chỉ thửa", v: "Số 9 đường số 4, P. Tân Quy, Q.7" },
-      { k: "Diện tích", v: "86,4 m²", mono: true },
-      { k: "Bên nhận chuyển nhượng", v: "Trần Văn Bình" },
-    ],
-  },
-  {
-    id: "0036-001120-2025", customer: "LÊ THỊ HỒNG NHUNG", cccd: "079185007781", dob: "30/09/1985",
-    phone: "0907 221 889", address: "27 Nguyễn Thị Minh Khai, P. Bến Nghé, Q.1, TP.HCM",
-    type: "HĐ Mua bán xe", group: "Động sản", date: "03/11/2025",
-    notary: "CCV Nguyễn Quốc Việt", secretary: "Phan Thanh Hải", counterparty: "Garage Trường Phát",
-    docCount: 5, status: "Đã công chứng",
-    meta: [
-      { k: "Biển số", v: "51K-882.74", mono: true },
-      { k: "Nhãn hiệu", v: "Toyota Vios" },
-      { k: "Số khung", v: "RLMAB12X8821", mono: true },
-      { k: "Bên mua", v: "Garage Trường Phát" },
-    ],
-  },
-  {
-    id: "0036-000915-2025", customer: "PHẠM THỊ BÍCH HẰNG", cccd: "079185009912", dob: "05/06/1985",
-    phone: "0938 110 447", address: "88 Trần Hưng Đạo, P. Cầu Ông Lãnh, Q.1, TP.HCM",
-    type: "HĐ Tặng cho QSDĐ", group: "Bất động sản", date: "19/09/2025",
-    notary: "CCV Lê Thị Hằng", secretary: "Trần Thị Mỹ Linh", counterparty: "Phạm Minh Khôi",
-    docCount: 8, status: "Đã công chứng",
-    meta: [
-      { k: "Thửa đất số", v: "57", mono: true },
-      { k: "Tờ bản đồ số", v: "4", mono: true },
-      { k: "Địa chỉ thửa", v: "12 Hẻm 88 Trần Hưng Đạo, Q.1" },
-      { k: "Bên được tặng cho", v: "Phạm Minh Khôi (con)" },
-    ],
-  },
-  {
-    id: "0036-001433-2026", customer: "ĐỖ MẠNH CƯỜNG", cccd: "079082004417", dob: "22/12/1982",
-    phone: "0912 668 030", address: "45 Cách Mạng Tháng Tám, P.6, Q.3, TP.HCM",
-    type: "HĐ Mua bán xe", group: "Động sản", date: "08/01/2026",
-    notary: "CCV Nguyễn Quốc Việt", secretary: "Phan Thanh Hải", counterparty: "Vũ Thị Lan",
-    docCount: 4, status: "Đã công chứng",
-    meta: [
-      { k: "Biển số", v: "59P1-238.45", mono: true },
-      { k: "Nhãn hiệu", v: "Honda CR-V" },
-      { k: "Bên mua", v: "Vũ Thị Lan" },
-    ],
-  },
-  {
-    id: "0036-000277-2024", customer: "NGUYỄN VĂN THÀNH", cccd: "079079001234", dob: "12/04/1979",
-    phone: "0903 555 214", address: "142/5 Lê Văn Sỹ, P.13, Q.3, TP.HCM",
-    type: "HĐ Thế chấp QSDĐ", group: "Bất động sản", date: "02/03/2024",
-    notary: "CCV Lê Thị Hằng", secretary: "Trần Thị Mỹ Linh", counterparty: "Ngân hàng ACB — CN Q.3",
-    docCount: 7, status: "Đã giải chấp",
-    meta: [
-      { k: "Thửa đất số", v: "248", mono: true },
-      { k: "Tờ bản đồ số", v: "12", mono: true },
-      { k: "Bên nhận thế chấp", v: "Ngân hàng ACB — CN Q.3" },
-      { k: "Số tiền vay", v: "2.400.000.000 đ", mono: true },
-    ],
-  },
-  {
-    id: "0036-000702-2025", customer: "LÝ HẢI YẾN", cccd: "079190003388", dob: "17/07/1990",
-    phone: "0976 540 218", address: "203 Điện Biên Phủ, P.15, Q. Bình Thạnh, TP.HCM",
-    type: "Văn bản ủy quyền", group: "Ủy quyền", date: "28/06/2025",
-    notary: "CCV Nguyễn Quốc Việt", secretary: "Phan Thanh Hải", counterparty: "Lý Hải Đăng",
-    docCount: 3, status: "Hết hiệu lực",
-    meta: [
-      { k: "Bên nhận uỷ quyền", v: "Lý Hải Đăng (anh ruột)" },
-      { k: "Phạm vi uỷ quyền", v: "Nhận tiền bồi thường GPMB" },
-    ],
-  },
-];
+/* "Khách cũ / hồ sơ cũ" trước đây là mảng dữ liệu bịa (priorRecords) — đã bỏ,
+   xem src/lookup.jsx (ReturningSearch giờ gọi thật GET /api/khach-hang). */

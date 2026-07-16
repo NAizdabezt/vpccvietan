@@ -55,7 +55,7 @@ function ScanGallery({ images, activeId, onSelect }) {
             </span>
             <span style={{ minWidth: 0 }}>
               <span style={{ display: "block", fontSize: 12.5, fontWeight: 600, color: "var(--text-primary)", whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" }}>{im.label}</span>
-              <span style={{ display: "inline-flex", alignItems: "center", gap: 4, fontSize: 11, color: "var(--text-success)", marginTop: 2 }}><L.CircleCheck size={11} /> Đã OCR</span>
+              <span style={{ display: "inline-flex", alignItems: "center", gap: 4, fontSize: 11, color: "var(--text-tertiary)", marginTop: 2 }}><L.CircleCheck size={11} /> Đã tải lên</span>
             </span>
           </button>
         );
@@ -70,9 +70,8 @@ function EditableDoc({ doc, onField, defaultOpen, readOnly }) {
   const { Badge } = window.FSICheckinDesignSystem_019df8;
   const [open, setOpen] = usePc(defaultOpen || false);
   const Icon = L[doc.icon] || L.File;
-  const review = doc.status === "review";
   return (
-    <div style={{ border: "1px solid " + (review ? "var(--border-warning)" : "var(--border-default)"), borderRadius: "var(--radius-lg)", background: "var(--bg-surface)", overflow: "hidden" }}>
+    <div style={{ border: "1px solid var(--border-default)", borderRadius: "var(--radius-lg)", background: "var(--bg-surface)", overflow: "hidden" }}>
       <div onClick={() => setOpen(!open)} style={{ display: "flex", alignItems: "center", gap: 10, padding: "10px 12px", cursor: "pointer" }}>
         <div style={{ width: 30, height: 30, borderRadius: 7, background: "var(--accent-muted)", display: "grid", placeItems: "center", flexShrink: 0 }}>
           <Icon size={16} color="var(--accent)" />
@@ -84,7 +83,7 @@ function EditableDoc({ doc, onField, defaultOpen, readOnly }) {
           </div>
           <div style={{ fontSize: 11.5, color: "var(--text-tertiary)" }}>{doc.source}</div>
         </div>
-        <Badge tone={review ? "warning" : "success"} dot>{doc.confidence}%</Badge>
+        <Badge tone="neutral">Nhập tay</Badge>
         <L.ChevronDown size={15} color="var(--text-tertiary)" style={{ transform: open ? "rotate(180deg)" : "none", transition: "transform .15s" }} />
       </div>
       {open && (
