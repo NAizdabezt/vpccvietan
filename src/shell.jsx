@@ -9,6 +9,9 @@ const VA_NAV = [
     { id: "requests", label: "Yêu cầu hiệu chỉnh", icon: "FileClock", ccvOnly: true, badgeKey: "requests" },
     { id: "photos", label: "Hàng chờ ảnh", icon: "Images" },
   ] },
+  { group: "Thiết lập", items: [
+    { id: "templates", label: "Biểu mẫu soạn thảo", icon: "FileStack" },
+  ] },
 ];
 
 function Sidebar({ active, onNav, role, badges }) {
@@ -97,11 +100,11 @@ function RolePill({ role, onChange }) {
   );
 }
 
-function Topbar({ title, role, onRole, onLogout }) {
-  const { IconButton } = window.FSICheckinDesignSystem_019df8;
-  const { Bell } = window.LucideReact;
-  const { ProfileButton, VA_PROFILES } = window.VASessions;
-  const profile = role === "ccv" ? VA_PROFILES["viet.nq"] : VA_PROFILES["linh.tt"];
+function Topbar({ title, role, onRole, onLogout, nv }) {
+  const { ProfileButton, VA_PROFILES, profileForNv } = window.VASessions;
+  // Ưu tiên đúng nhân viên đang đăng nhập thật; chỉ rơi về mock nếu vì lý do gì
+  // đó chưa có nv (không nên xảy ra vì trang đã chặn !authed từ trước).
+  const profile = profileForNv(nv) || (role === "ccv" ? VA_PROFILES["viet.nq"] : VA_PROFILES["linh.tt"]);
   return (
     <header style={{
       height: "var(--topbar-height)", flexShrink: 0, display: "flex", alignItems: "center",
@@ -114,7 +117,7 @@ function Topbar({ title, role, onRole, onLogout }) {
         <span style={{ color: "var(--text-primary)", fontWeight: 500 }}>{title || "Màn hình soạn thảo"}</span>
       </div>
       <div style={{ display: "flex", alignItems: "center", gap: 14 }}>
-        <IconButton icon={Bell} badge={2} aria-label="Thông báo" />
+        <window.VASessions.NotificationBell />
         <ProfileButton profile={profile} onLogout={onLogout} />
       </div>
     </header>

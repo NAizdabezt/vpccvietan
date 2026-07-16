@@ -97,19 +97,21 @@ function identForName(name) {
   return d ? d.ident : (name || "").split(" ").map((w) => w[0]).slice(-3).join("").toUpperCase();
 }
 
-/* ---- Khóa phiên: store localStorage (ghi nhận ai đang mở để chỉnh sửa) ---- */
-function readLocks() {
-  try { return JSON.parse(window.localStorage.getItem("va_session_locks") || "{}"); } catch (e) { return {}; }
+const VA_ROLE_LABELS = { CCV: "Công chứng viên", TKNV: "Thư ký nghiệp vụ", THU_NGAN: "Thu ngân", KE_TOAN: "Kế toán", LUU_TRU: "Lưu trữ viên", QTHT: "Quản trị hệ thống", LANH_DAO: "Ban lãnh đạo" };
+// Dựng "profile" hiển thị (Topbar, ProfileButton, ký tự định danh soạn thảo) từ
+// đúng nhân viên đang đăng nhập thật (JWT) — KHÔNG dùng VA_PROFILES (bảng mock
+// cũ, chỉ có 5 tài khoản demo cố định, không phản ánh tài khoản mới tạo).
+function profileForNv(nv) {
+  if (!nv) return null;
+  return {
+    name: nv.hoTen,
+    title: (nv.vaiTro || []).map((r) => VA_ROLE_LABELS[r] || r).join(" · "),
+    email: nv.email || "",
+    account: nv.maNhanVien,
+    vaiTro: nv.vaiTro || [],
+    hasIdent: (nv.vaiTro || []).some((r) => r === "CCV" || r === "TKNV"),
+  };
 }
-function writeLocks(obj) { try { window.localStorage.setItem("va_session_locks", JSON.stringify(obj)); } catch (e) {} }
-/* 1 tài khoản chỉ được khóa 1 phiên: mở phiên mới tự động nhả khóa cũ của người đó. */
-function lockSession(id, who) {
-  const l = readLocks();
-  Object.keys(l).forEach((k) => { if (l[k] && l[k].who === who && k !== id) delete l[k]; });
-  l[id] = { who, at: vaNow() };
-  writeLocks(l);
-}
-function unlockSession(id) { const l = readLocks(); delete l[id]; writeLocks(l); }
 
 /* ============================================================================
    Hộp thư YÊU CẦU HIỆU CHỈNH (store localStorage dùng chung)
@@ -194,16 +196,43 @@ const VA_FEE_BY_TYPE = {
   "Văn bản ủy quyền": 800000,
 };
 function feeOfType(t) { return VA_FEE_BY_TYPE[t] || 1000000; }
-/* Chuyển 1 phiên (overview) → cấu trúc "row" mà phiếu thu POS sử dụng */
+/* Chuyển 1 phiên (overview) → cấu trúc "row" mà phiếu thu POS sử dụng.
+   Phí hiện theo GIÁ THẬT của từng biểu mẫu (BieuMau.phiMacDinh, qua
+   s.bieuMaus — xem session-store.jsx) thay vì bảng giá cứng đoán theo tên
+   loại HĐ như trước; bảng giá cứng chỉ còn dùng khi thiếu dữ liệu thật
+   (biểu mẫu tùy chỉnh chưa đặt giá, hoặc session mock chưa nối API). */
 function sessionToReceiptRow(s) {
+  const hasReal = Array.isArray(s.bieuMaus) && s.bieuMaus.length > 0;
+  // Chỉ 1 biểu mẫu → phí của nó CHÍNH LÀ tổng phí thật của cả hồ sơ (s.fee),
+  // không suy đoán — khớp tuyệt đối với số đã lưu ở server.
+  const files = hasReal
+    ? (s.bieuMaus.length === 1
+        ? [{ ten: s.bieuMaus[0].ten, fee: Number(s.fee || 0) }]
+        : s.bieuMaus.map((b) => ({ ten: b.ten, fee: b.phi || feeOfType(b.ten) })))
+    : s.types.map((t) => ({ ten: t, fee: feeOfType(t) }));
   return {
     id: s.id, sid: s.id, khach: s.customer, addr: s.address || "Văn phòng công chứng Việt An",
-    creator: s.secretary || s.creator,
-    files: s.types.map((t, i) => ({
-      id: s.id + "-h" + i, service: t, kind: "contract",
-      soCC: null, fee: feeOfType(t), status: "waiting", debtFile: false, debtMoney: false,
+    creator: s.secretary || s.creator, loaiHoSo: s.loaiHoSo,
+    files: files.map((f, i) => ({
+      id: s.id + "-h" + i, service: f.ten, kind: "contract",
+      soCC: null, fee: f.fee, status: "waiting", debtFile: false, debtMoney: false,
     })),
   };
+}
+
+/* Biên lai đã cấp số & thu phí HÔM NAY — dùng chung cho StatStrip, "Quầy thu
+   ngân" (biên lai trong ca) và "Đối soát doanh thu" (Kế toán), thay 3 nơi mỗi
+   chỗ tự đoán dữ liệu mock khác nhau. "Cấp số hôm nay" suy ra từ updatedAt vì
+   HoSo không có cột riêng "ngày cấp số" — /cap-so là chỗ duy nhất set ccNumber. */
+function receiptRowsToday(sessions) {
+  const todayDMY = VA_TODAY.split("-").reverse().join("/");
+  return sessions
+    .filter((s) => s.ccNumber && (s.updatedAt || "").startsWith(todayDMY))
+    .map((s) => ({
+      id: s.hoSoId, hoSoId: s.hoSoId, no: s.ccNumber, khach: s.customer,
+      service: s.types.join(", "), amount: s.soTienThucThu != null ? s.soTienThucThu : (s.fee || 0),
+      pay: s.hinhThucThu || "cash",
+    }));
 }
 
 /* ---- Tiện ích ---- */
@@ -219,6 +248,13 @@ function daysOverdue(isoDate) {
 function vaNow() {
   const d = new Date(); const p = (n) => String(n).padStart(2, "0");
   return `${p(d.getDate())}/${p(d.getMonth() + 1)}/${d.getFullYear()} · ${p(d.getHours())}:${p(d.getMinutes())}`;
+}
+// Số tiền còn nợ khi cấp số & thu phí có tick "Nợ tiền thu" — trước đây chỉ
+// ghi cờ boolean rồi không ai tính/hiện số tiền thiếu; suy ra từ phí dịch vụ
+// (s.fee) trừ số đã thực thu (s.soTienThucThu), không âm.
+function owedAmount(s) {
+  if (!s.noTienThu) return 0;
+  return Math.max(0, Number(s.fee || 0) - Number(s.soTienThucThu || 0));
 }
 const CCV_ME = "CCV Nguyễn Quốc Việt";
 
@@ -336,6 +372,13 @@ function ChargeModal({ session, onClose, onConfirm }) {
   const L = window.LucideReact;
   const POSR = window.POSReceipt;
   const row = sessionToReceiptRow(session);
+  // Smart Hint số CC (REQ-013) — trước đây đọc thẳng POS_DATA.soCC mock, giờ
+  // tải thật từ server trước khi cho gõ phiếu thu (chỉ mang tính gợi ý/hiển
+  // thị: /cap-so vẫn tự chọn số cuối cùng bằng transaction chống trùng riêng).
+  const [hint, setHint] = useSx(null);
+  React.useEffect(() => {
+    window.VAApi.hoSo.soCcHint().then(setHint).catch(() => setHint({ nam: new Date().getFullYear(), next: 1, lastUsed: 0, missing: [] }));
+  }, []);
   return (
     <div style={{ position: "fixed", inset: 0, zIndex: 80, display: "flex", alignItems: "center", justifyContent: "center", padding: 24 }}>
       <div onClick={onClose} style={{ position: "absolute", inset: 0, background: "rgba(28,28,26,.46)" }} />
@@ -348,9 +391,13 @@ function ChargeModal({ session, onClose, onConfirm }) {
           </div>
           <button type="button" onClick={onClose} style={{ width: 30, height: 30, border: "none", background: "transparent", borderRadius: 7, cursor: "pointer", display: "grid", placeItems: "center", color: "var(--text-tertiary)" }}><L.X size={18} /></button>
         </div>
-        {POSR
-          ? <POSR.ReceiptForm key={row.id} row={row} onClose={onClose} onConfirm={onConfirm} />
-          : <div style={{ padding: 24, fontSize: 13, color: "var(--text-tertiary)" }}>Không tải được phiếu thu.</div>}
+        {!POSR ? (
+          <div style={{ padding: 24, fontSize: 13, color: "var(--text-tertiary)" }}>Không tải được phiếu thu.</div>
+        ) : !hint ? (
+          <div style={{ padding: 24, fontSize: 13, color: "var(--text-tertiary)", display: "flex", alignItems: "center", gap: 8 }}><L.Loader size={15} /> Đang tải gợi ý số công chứng…</div>
+        ) : (
+          <POSR.ReceiptForm key={row.id} row={row} hint={hint} onClose={onClose} onConfirm={onConfirm} />
+        )}
       </div>
     </div>
   );
@@ -702,12 +749,21 @@ function CorrectionModal({ session, role, initialOption, proposal, onReject, onC
   );
 }
 
-function SessionDetailModal({ session, onClose, role, correctable, currentUser, onCorrected, incomingRequest, onReject }) {
+function SessionDetailModal({ session, onClose, role, correctable, currentUser, onCorrected, incomingRequest, onReject, canSettleDebt, onSettleDebt }) {
   const L = window.LucideReact;
   const { Button } = window.FSICheckinDesignSystem_019df8;
   const s = session;
   const over = s.status !== "done" && daysOverdue(s.date) > 0;
   const [corr, setCorr] = useSx(null);
+  const [settling, setSettling] = useSx(false);
+  const owed = owedAmount(s);
+  const hasDebt = s.noTienThu || s.noHoSo;
+  const settleDebt = async () => {
+    setSettling(true);
+    await onSettleDebt(s);
+    setSettling(false);
+    onClose();
+  };
   const AMBER_SOLID = "#d97706";
   const amberBox = { display: "flex", alignItems: "center", gap: 8, fontSize: 12.5, fontWeight: 500, color: "#b45309", padding: "9px 12px", borderRadius: "var(--radius-md)", background: "color-mix(in srgb, #d97706 11%, transparent)", border: "1px solid color-mix(in srgb, #d97706 30%, transparent)" };
   const infoBox = { display: "flex", alignItems: "center", gap: 8, fontSize: 12.5, fontWeight: 500, color: "var(--accent-hover)", padding: "9px 12px", borderRadius: "var(--radius-md)", background: "var(--accent-muted)", border: "1px solid var(--accent-border)" };
@@ -747,6 +803,21 @@ function SessionDetailModal({ session, onClose, role, correctable, currentUser, 
           {over && (
             <div style={{ display: "flex", alignItems: "center", gap: 8, fontSize: 12.5, fontWeight: 600, color: CARRYOVER_C, padding: "8px 12px", borderRadius: "var(--radius-md)", background: `color-mix(in srgb, ${CARRYOVER_C} 9%, transparent)`, border: `1px solid color-mix(in srgb, ${CARRYOVER_C} 24%, transparent)` }}>
               <L.AlertTriangle size={15} /> Tồn đọng {daysOverdue(s.date)} ngày — khởi tạo {s.createdAt}, chưa hoàn thành.
+            </div>
+          )}
+          {hasDebt && (
+            <div style={{ display: "flex", alignItems: "center", gap: 10, fontSize: 12.5, fontWeight: 600, color: "#dc2626", padding: "10px 14px", borderRadius: "var(--radius-md)", background: "color-mix(in srgb, #dc2626 9%, transparent)", border: "1px solid color-mix(in srgb, #dc2626 26%, transparent)" }}>
+              <L.CircleDollarSign size={16} style={{ flexShrink: 0 }} />
+              <span style={{ flex: 1 }}>
+                {s.noTienThu && <>Còn nợ <b>{owed.toLocaleString("vi-VN")}₫</b> tiền thu.</>}
+                {s.noTienThu && s.noHoSo && " · "}
+                {s.noHoSo && <>Khách còn nợ hồ sơ/giấy tờ.</>}
+              </span>
+              {canSettleDebt && (
+                <Button variant="primary" size="sm" icon={settling ? L.Loader : L.CheckCircle2} disabled={settling} onClick={settleDebt} style={{ background: "#dc2626", borderColor: "#dc2626" }}>
+                  {settling ? "Đang tất toán…" : "Tất toán"}
+                </Button>
+              )}
             </div>
           )}
 
@@ -907,7 +978,7 @@ function SummaryCard({ icon, label, value, c }) {
 }
 
 /* ---- Một hàng phiên ---- */
-function SessionRow({ s, last, currentUser, canAttach, onAttach, canCapture, onCapture, canCharge, onCharge, canInvoice, onInvoice, onOpen, onView }) {
+function SessionRow({ s, last, currentUser, canAttach, onAttach, canCapture, onCapture, canCharge, onCharge, canInvoice, onInvoice, canSettleDebt, onSettleDebt, onOpen, onView }) {
   const L = window.LucideReact;
   const { Button, Avatar } = window.FSICheckinDesignSystem_019df8;
   const over = s.status !== "done" && daysOverdue(s.date) > 0;
@@ -940,6 +1011,8 @@ function SessionRow({ s, last, currentUser, canAttach, onAttach, canCapture, onC
           <span style={{ fontFamily: "var(--font-mono)", fontSize: 12.5, color: "var(--text-primary)" }}>{s.id}</span>
           <span style={{ fontSize: 10.5, color: "var(--text-tertiary)" }}>Tạo bởi {s.creator}</span>
           {over && <span style={{ display: "inline-flex", alignItems: "center", gap: 4, fontSize: 10.5, fontWeight: 700, color: CARRYOVER_C }}><L.AlertTriangle size={11} /> Tồn {daysOverdue(s.date)} ngày</span>}
+          {s.noTienThu && <span style={{ display: "inline-flex", alignItems: "center", gap: 4, fontSize: 10.5, fontWeight: 700, color: "#dc2626" }}><L.CircleDollarSign size={11} /> Nợ {owedAmount(s).toLocaleString("vi-VN")}đ</span>}
+          {s.noHoSo && <span style={{ display: "inline-flex", alignItems: "center", gap: 4, fontSize: 10.5, fontWeight: 700, color: "#dc2626" }}><L.FileWarning size={11} /> Nợ hồ sơ</span>}
         </div>
       </td>
       <td style={td}>
@@ -971,6 +1044,9 @@ function SessionRow({ s, last, currentUser, canAttach, onAttach, canCapture, onC
       </td>
       <td style={{ ...td, textAlign: "right", whiteSpace: "nowrap" }}>
         <div style={{ display: "inline-flex", alignItems: "center", gap: 8, justifyContent: "flex-end" }}>
+          {canSettleDebt && (s.noTienThu || s.noHoSo) && (
+            <Button variant="secondary" size="sm" icon={L.CircleDollarSign} onClick={() => onSettleDebt(s)} style={{ color: "#dc2626", borderColor: "color-mix(in srgb, #dc2626 35%, transparent)" }}>Tất toán nợ</Button>
+          )}
           {canInvoice && ["waitAttach", "done"].includes(s.status) && (
             s.invoiced
               ? <span style={{ display: "inline-flex", alignItems: "center", gap: 5, fontSize: 11.5, fontWeight: 600, color: "#16a34a", background: "color-mix(in srgb, #16a34a 12%, transparent)", border: "1px solid color-mix(in srgb, #16a34a 26%, transparent)", borderRadius: "var(--radius-full)", padding: "4px 10px" }}><L.CheckCircle2 size={12} /> Đã xuất HĐ</span>
@@ -1051,15 +1127,29 @@ function OverviewScreen({ role, currentUser, canCreate, canAttach, canCapture, c
   const [viewer, setViewer] = useSx(null);
   const [toast, setToast] = useSx(null);
 
-  // Phủ khóa phiên ghi nhận từ localStorage (ai đang mở để chỉnh sửa).
-  // Đảm bảo 1 tài khoản chỉ giữ 1 khóa: nếu người đó có khóa "live", bỏ mọi khóa seed của họ.
-  const liveLocks = readLocks();
-  const liveLockers = new Set(Object.values(liveLocks).map((v) => v.who));
-  const sessions = base.map((s) => {
-    if (liveLocks[s.id]) return { ...s, lockedBy: liveLocks[s.id].who, lockedAt: liveLocks[s.id].at };
-    if (s.lockedBy && liveLockers.has(s.lockedBy)) return { ...s, lockedBy: "", lockedAt: "" };
-    return s;
-  });
+  // Khóa phiên (ai đang mở để soạn thảo) giờ đến thẳng từ server qua
+  // VAStore.fromApi (s.lockedBy/s.lockedAt) — không còn phủ từ localStorage.
+  const sessions = base;
+
+  // Click-through từ chuông thông báo ("#hoSo=<id>&hanhDong=cap-so|hoa-don") —
+  // khi danh sách đã tải và khớp được hồ sơ, tự mở đúng modal thao tác. Chỉ
+  // chạy 1 lần (autoOpenedRef) để không mở lại nếu người dùng tự đóng modal.
+  // Dùng URL hash (không phải query string) vì trình chủ tĩnh cục bộ (serve)
+  // rewrite/redirect "*.html?..." và làm mất query string; hash không gửi
+  // lên server nên luôn được trình duyệt giữ nguyên qua mọi redirect.
+  const autoOpenedRef = React.useRef(false);
+  React.useEffect(() => {
+    if (autoOpenedRef.current || !sessions.length) return;
+    const params = new URLSearchParams(window.location.hash.replace(/^#/, ""));
+    const targetId = params.get("hoSo");
+    const hanhDong = params.get("hanhDong");
+    if (!targetId || !hanhDong) return;
+    const match = sessions.find((r) => r.hoSoId === targetId);
+    if (!match) return;
+    autoOpenedRef.current = true;
+    if (hanhDong === "cap-so") setChargeTarget(match);
+    else if (hanhDong === "hoa-don") setInvoiceTarget(match);
+  }, [sessions]);
 
   // Phiên thuộc luồng tổng quan: hôm nay (mọi trạng thái) + tồn đọng (hôm trước, chưa hoàn thành)
   const inFlow = sessions.filter((s) => s.date === VA_TODAY || s.status !== "done");
@@ -1083,6 +1173,13 @@ function OverviewScreen({ role, currentUser, canCreate, canAttach, canCapture, c
   const doneToday = inFlow.filter((s) => s.status === "done" && s.date === VA_TODAY).length;
 
   const counts = {}; STATUS_ORDER.forEach((k) => { counts[k] = inFlow.filter((s) => s.status === k).length; });
+
+  // Công nợ (nợ tiền thu/nợ hồ sơ) — trước đây chỉ ghi cờ rồi bặt vô âm tín,
+  // không nơi nào nhắc lại. Đếm/lọc trên TOÀN BỘ sessions (không giới hạn
+  // trong inFlow) vì nợ có thể vẫn treo dù phiên đã "Hoàn thành" từ hôm trước.
+  const debtCount = sessions.filter((s) => s.noTienThu || s.noHoSo).length;
+  const debtSessions = sessions.filter((s) => (s.noTienThu || s.noHoSo) && matchQ(s))
+    .sort((a, b) => (b.date || "").localeCompare(a.date || ""));
 
   // Thao tác nhanh từ Luồng tổng quan — chưa nối API tạo FileScan thật (chưa có
   // endpoint upload file, thuộc Mốc 6). Chỉ cập nhật lạc quan trong store dùng
@@ -1110,12 +1207,20 @@ function OverviewScreen({ role, currentUser, canCreate, canAttach, canCapture, c
   const doCharge = async (res) => {
     const target = chargeTarget;
     try {
-      const { soCc } = await window.VAApi.hoSo.capSo(target.hoSoId, {
+      const { soCc, hoSo } = await window.VAApi.hoSo.capSo(target.hoSoId, {
         soTienThucThu: res && res.thucThu != null ? res.thucThu : undefined,
         noTienThu: !!(res && res.files && res.files.some((f) => f.debtMoney)),
         noHoSo: !!(res && res.files && res.files.some((f) => f.debtFile)),
+        phuongThucThanhToan: res && res.pay,
       });
-      window.VAStore.patchLocal(target.hoSoId, { status: "waitAttach", ccNumber: soCc, updatedAt: vaNow() });
+      // Vá theo đúng dữ liệu server vừa lưu (kể cả cờ nợ) — trước đây chỉ patch
+      // status/ccNumber nên badge "Nợ tiền thu"/"Nợ hồ sơ" không hiện ra ngay,
+      // phải tải lại trang mới thấy vì store cục bộ chưa có 2 cờ này.
+      window.VAStore.patchLocal(target.hoSoId, {
+        status: "waitAttach", ccNumber: soCc, updatedAt: vaNow(),
+        noTienThu: !!(hoSo && hoSo.noTienThu), noHoSo: !!(hoSo && hoSo.noHoSo),
+        soTienThucThu: hoSo && hoSo.soTienThucThu != null ? Number(hoSo.soTienThucThu) : null,
+      });
       setToast({ title: "Đã cấp số & thu phí", message: target.id + " · số CC " + soCc + " — phiên chuyển sang Chờ số hóa & đẩy CMC." });
     } catch (e) {
       setToast({ tone: "danger", title: "Cấp số thất bại", message: e.message || "Không rõ nguyên nhân" });
@@ -1124,12 +1229,34 @@ function OverviewScreen({ role, currentUser, canCreate, canAttach, canCapture, c
     setTimeout(() => setToast(null), 3600);
   };
 
-  // Kế toán xuất hóa đơn điện tử cho phiên (chưa nối API HoaDon thật, thuộc Mốc 6)
-  const doInvoice = (res) => {
-    const id = invoiceTarget.hoSoId;
-    window.VAStore.patchLocal(id, { invoiced: true, updatedAt: vaNow() });
-    setToast({ title: "Đã xuất hóa đơn điện tử (giả lập)", message: invoiceTarget.id + " · " + (res && res.amount ? res.amount.toLocaleString("vi-VN") + "₫" : "") + " — đã đẩy EasyInvoice" + (res && res.issueDate ? " (ngày xuất " + res.issueDate + ")" : "") + "." });
+  // Kế toán xuất hóa đơn điện tử cho phiên → gọi API HoaDon thật (Mốc 6).
+  const doInvoice = async (res) => {
+    const target = invoiceTarget;
+    try {
+      const [d, m, y] = (res && res.issueDate ? res.issueDate : "").split("/");
+      const isoDate = d && m && y ? `${y}-${m}-${d}` : undefined;
+      await window.VAApi.hoaDon.create({ hoSoIds: [target.hoSoId], issueDate: isoDate, mst: (res && res.mst) || undefined });
+      window.VAStore.patchLocal(target.hoSoId, { invoiced: true, updatedAt: vaNow() });
+      setToast({ title: "Đã xuất hóa đơn điện tử", message: target.id + " · " + (res && res.amount ? res.amount.toLocaleString("vi-VN") + "₫" : "") + " — đã đẩy EasyInvoice" + (res && res.issueDate ? " (ngày xuất " + res.issueDate + ")" : "") + "." });
+    } catch (e) {
+      setToast({ tone: "danger", title: "Xuất hóa đơn thất bại", message: e.message || "Không rõ nguyên nhân" });
+    }
     setInvoiceTarget(null);
+    setTimeout(() => setToast(null), 3600);
+  };
+
+  // Tất toán công nợ (nợ tiền thu/nợ hồ sơ) ghi nhận lúc cấp số — trước đây chỉ
+  // set cờ rồi không nơi nào cho tất toán lại; giờ gọi API thật, coi như đã thu
+  // đủ tiền còn thiếu (fee) rồi xóa cờ, phản ánh ngay trong danh sách đang mở.
+  const doSettleDebt = async (s) => {
+    const owed = owedAmount(s);
+    try {
+      await window.VAApi.hoSo.tatToanNo(s.hoSoId);
+      window.VAStore.patchLocal(s.hoSoId, { noTienThu: false, noHoSo: false, soTienThucThu: s.fee, updatedAt: vaNow() });
+      setToast({ title: "Đã tất toán công nợ", message: s.id + (owed > 0 ? " · thu đủ " + owed.toLocaleString("vi-VN") + "₫ còn thiếu." : " · đã đánh dấu hết nợ hồ sơ.") });
+    } catch (e) {
+      setToast({ tone: "danger", title: "Tất toán thất bại", message: e.message || "Không rõ nguyên nhân" });
+    }
     setTimeout(() => setToast(null), 3600);
   };
 
@@ -1149,7 +1276,7 @@ function OverviewScreen({ role, currentUser, canCreate, canAttach, canCapture, c
     );
   };
 
-  const rowProps = { currentUser, canAttach, onAttach: setCapTarget, canCapture, onCapture: setPhotoTarget, canCharge, onCharge: setChargeTarget, canInvoice, onInvoice: setInvoiceTarget, onOpen: onOpen ? onOpen : null, onView: setViewer };
+  const rowProps = { currentUser, canAttach, onAttach: setCapTarget, canCapture, onCapture: setPhotoTarget, canCharge, onCharge: setChargeTarget, canInvoice, onInvoice: setInvoiceTarget, canSettleDebt: canCharge || canInvoice, onSettleDebt: doSettleDebt, onOpen: onOpen ? onOpen : null, onView: setViewer };
 
   return (
     <div style={{ height: "100%", overflowY: "auto", padding: 24 }}>
@@ -1163,11 +1290,12 @@ function OverviewScreen({ role, currentUser, canCreate, canAttach, canCapture, c
         </div>
 
         {/* Số liệu */}
-        <div style={{ display: "grid", gridTemplateColumns: "repeat(4, 1fr)", gap: 12 }}>
+        <div style={{ display: "grid", gridTemplateColumns: "repeat(5, 1fr)", gap: 12 }}>
           <SummaryCard icon="AlertTriangle" label="Tồn đọng từ hôm trước" value={carryCount} c={CARRYOVER_C} />
           <SummaryCard icon="Loader" label="Đang xử lý" value={processingCount} c="#d97706" />
           <SummaryCard icon="Paperclip" label="Chờ gắn file" value={attachCount} c="#0891b2" />
           <SummaryCard icon="CircleCheck" label="Hoàn thành hôm nay" value={doneToday} c="#16a34a" />
+          <SummaryCard icon="CircleDollarSign" label="Công nợ đang treo" value={debtCount} c="#dc2626" />
         </div>
 
         {/* Bộ lọc */}
@@ -1183,13 +1311,25 @@ function OverviewScreen({ role, currentUser, canCreate, canAttach, canCapture, c
             <span style={{ display: "inline-flex", alignItems: "center", gap: 5, fontSize: 11.5, fontWeight: 600, color: "var(--text-tertiary)", marginRight: 2 }}><L.Filter size={13} /> Lọc:</span>
             <FilterChip value="all" label="Tất cả" count={inFlow.length} />
             <FilterChip value="carry" label="Tồn đọng" color={CARRYOVER_C} count={carryCount} />
+            <FilterChip value="debt" label="Công nợ" color="#dc2626" count={debtCount} />
             <span style={{ width: 1, height: 18, background: "var(--border-default)", margin: "0 2px" }} />
             {STATUS_ORDER.map((k) => <FilterChip key={k} value={k} label={SESSION_STATUS[k].short} color={SESSION_STATUS[k].c} count={counts[k]} />)}
           </div>
         </div>
 
         {/* Danh sách */}
-        {carry.length === 0 && today.length === 0 ? (
+        {filter === "debt" ? (
+          // Công nợ tra trên TOÀN BỘ phiên (không giới hạn hôm nay/tồn đọng) —
+          // để nợ vẫn hiện ra kể cả khi phiên đã "Hoàn thành" từ trước đó.
+          debtSessions.length === 0 ? (
+            <div style={{ display: "grid", placeItems: "center", textAlign: "center", padding: "48px 12px", color: "var(--text-tertiary)", background: "var(--bg-surface)", border: "1px dashed var(--border-default)", borderRadius: "var(--radius-lg)" }}>
+              <L.CircleCheck size={28} style={{ marginBottom: 8 }} />
+              <div style={{ fontSize: 13.5 }}>Không có công nợ nào đang treo.</div>
+            </div>
+          ) : (
+            <SessionTable title="Công nợ đang treo" icon="CircleDollarSign" accent="#dc2626" items={debtSessions} {...rowProps} />
+          )
+        ) : carry.length === 0 && today.length === 0 ? (
           <div style={{ display: "grid", placeItems: "center", textAlign: "center", padding: "48px 12px", color: "var(--text-tertiary)", background: "var(--bg-surface)", border: "1px dashed var(--border-default)", borderRadius: "var(--radius-lg)" }}>
             <L.SearchX size={28} style={{ marginBottom: 8 }} />
             <div style={{ fontSize: 13.5 }}>Không có phiên nào khớp bộ lọc hiện tại.</div>
@@ -1206,7 +1346,7 @@ function OverviewScreen({ role, currentUser, canCreate, canAttach, canCapture, c
       {photoTarget && <CaptureModal session={photoTarget} ccvName={currentUser} onClose={() => setPhotoTarget(null)} onConfirm={doCapture} />}
       {chargeTarget && <ChargeModal session={chargeTarget} onClose={() => setChargeTarget(null)} onConfirm={doCharge} />}
       {invoiceTarget && <InvoiceModal session={invoiceTarget} onClose={() => setInvoiceTarget(null)} onConfirm={doInvoice} />}
-      {viewer && <SessionDetailModal session={viewer} onClose={() => setViewer(null)} />}
+      {viewer && <SessionDetailModal session={viewer} onClose={() => setViewer(null)} canSettleDebt={canCharge || canInvoice} onSettleDebt={doSettleDebt} />}
       {toast && (
         <div style={{ position: "fixed", right: 24, bottom: 24, zIndex: 90 }}>
           <Toast tone={toast.tone || "success"} title={toast.title} message={toast.message} onClose={() => setToast(null)} />
@@ -1231,8 +1371,13 @@ function CompletedScreen({ role, currentUser: currentUserProp }) {
   const correctable = role === "arc" || role === "ccv";
   const todayDMY = (() => { const [y, m, d] = VA_TODAY.split("-"); return d + "/" + m + "/" + y; })();
 
-  const baseAll = useMemoSx(() => VA_ALL_SESSIONS.filter((s) => s.status === "done")
-    .sort((a, b) => (a.completedAt < b.completedAt ? 1 : -1)), []);
+  // Nguồn dữ liệu THẬT qua window.VAStore (giống Luồng tổng quan) — trước đây
+  // tab này đọc từ VA_ALL_SESSIONS tĩnh nên không phản ánh hồ sơ hoàn thành
+  // thật, kể cả những hồ sơ đang có công nợ treo. "overrides" (hiệu chỉnh số
+  // CC/hủy số) vẫn chỉ áp cục bộ vì chưa có API hiệu chỉnh thật ở backend.
+  const liveSessions = window.VAStore.useHoSoStore();
+  const baseAll = useMemoSx(() => liveSessions.filter((s) => s.status === "done")
+    .sort((a, b) => (a.completedAt < b.completedAt ? 1 : -1)), [liveSessions]);
   const all = baseAll.map((s) => overrides[s.id] ? { ...s, ...overrides[s.id] } : s);
 
   const applyCorrection = (p) => {
@@ -1257,6 +1402,20 @@ function CompletedScreen({ role, currentUser: currentUserProp }) {
   };
 
   const types = useMemoSx(() => { const set = new Set(); baseAll.forEach((s) => s.types.forEach((t) => set.add(t))); return [...set]; }, [baseAll]);
+
+  // Công nợ có thể vẫn treo dù hồ sơ đã hoàn thành — cho tất toán ngay tại đây
+  // (chỉ Thu ngân/Kế toán), không phải chỉ ở Luồng tổng quan.
+  const canSettleDebt = role === "cashier" || role === "acct";
+  const doSettleDebt = async (s) => {
+    try {
+      await window.VAApi.hoSo.tatToanNo(s.hoSoId);
+      window.VAStore.patchLocal(s.hoSoId, { noTienThu: false, noHoSo: false, soTienThucThu: s.fee });
+      setToast({ title: "Đã tất toán công nợ", message: s.id });
+    } catch (e) {
+      setToast({ tone: "danger", title: "Tất toán thất bại", message: e.message || "Không rõ nguyên nhân" });
+    }
+    setTimeout(() => setToast(null), 3600);
+  };
 
   const matchQ = (s) => {
     const k = vaNormalize(q); if (k.length < 1) return true;
@@ -1319,7 +1478,13 @@ function CompletedScreen({ role, currentUser: currentUserProp }) {
               <tbody>
                 {visible.map((s, i) => (
                   <tr key={s.id} style={{ borderBottom: i === visible.length - 1 ? "none" : "1px solid var(--border-subtle)" }}>
-                    <td style={{ ...td, fontFamily: "var(--font-mono)", fontSize: 12.5, color: "var(--text-primary)", whiteSpace: "nowrap" }}>{s.id}</td>
+                    <td style={{ ...td, fontFamily: "var(--font-mono)", fontSize: 12.5, color: "var(--text-primary)", whiteSpace: "nowrap" }}>
+                      <div style={{ display: "flex", flexDirection: "column", gap: 3 }}>
+                        <span>{s.id}</span>
+                        {s.noTienThu && <span style={{ display: "inline-flex", alignItems: "center", gap: 4, fontSize: 10.5, fontWeight: 700, color: "#dc2626" }}><L.CircleDollarSign size={11} /> Nợ {owedAmount(s).toLocaleString("vi-VN")}đ</span>}
+                        {s.noHoSo && <span style={{ display: "inline-flex", alignItems: "center", gap: 4, fontSize: 10.5, fontWeight: 700, color: "#dc2626" }}><L.FileWarning size={11} /> Nợ hồ sơ</span>}
+                      </div>
+                    </td>
                     <td style={td}>
                       <div style={{ display: "flex", alignItems: "center", gap: 9 }}>
                         <Avatar name={s.customer} size={26} />
@@ -1344,7 +1509,7 @@ function CompletedScreen({ role, currentUser: currentUserProp }) {
           </div>
         )}
       </div>
-      {viewer && <SessionDetailModal session={viewer} onClose={() => setViewer(null)} role={role} correctable={correctable} currentUser={currentUser} onCorrected={applyCorrection} />}
+      {viewer && <SessionDetailModal session={viewer} onClose={() => setViewer(null)} role={role} correctable={correctable} currentUser={currentUser} onCorrected={applyCorrection} canSettleDebt={canSettleDebt} onSettleDebt={doSettleDebt} />}
       {toast && (
         <div style={{ position: "fixed", right: 24, bottom: 24, zIndex: 95 }}>
           <Toast tone={toast.tone || "success"} title={toast.title} message={toast.message} onClose={() => setToast(null)} />
@@ -1360,12 +1525,52 @@ function CompletedScreen({ role, currentUser: currentUserProp }) {
    ========================================================================== */
 function ProfileModal({ profile, onClose }) {
   const L = window.LucideReact;
-  const { Avatar, Button } = window.FSICheckinDesignSystem_019df8;
+  const { Avatar, Button, Input } = window.FSICheckinDesignSystem_019df8;
   const [ident, setIdentState] = useSx(() => getIdent(profile));
-  const [showPw, setShowPw] = useSx(false);
   const [saved, setSaved] = useSx(false);
 
+  const [email, setEmail] = useSx(profile.email || "");
+  const [emailBusy, setEmailBusy] = useSx(false);
+  const [emailSaved, setEmailSaved] = useSx(false);
+  const [emailErr, setEmailErr] = useSx("");
+
+  const [curPw, setCurPw] = useSx("");
+  const [newPw, setNewPw] = useSx("");
+  const [newPw2, setNewPw2] = useSx("");
+  const [pwBusy, setPwBusy] = useSx(false);
+  const [pwErr, setPwErr] = useSx("");
+  const [pwDone, setPwDone] = useSx(false);
+
   const save = () => { setIdent(profile, ident.toUpperCase()); setSaved(true); setTimeout(() => setSaved(false), 2000); };
+
+  const saveEmail = async () => {
+    if (!email.trim()) { setEmailErr("Email không được để trống."); return; }
+    setEmailBusy(true); setEmailErr("");
+    try {
+      await window.VAApi.nhanVien.updateMe({ email: email.trim() });
+      setEmailSaved(true); setTimeout(() => setEmailSaved(false), 2000);
+    } catch (e) {
+      setEmailErr(e.message || "Không lưu được email.");
+    } finally {
+      setEmailBusy(false);
+    }
+  };
+
+  const changePassword = async () => {
+    setPwErr("");
+    if (newPw.length < 6) { setPwErr("Mật khẩu mới phải có ít nhất 6 ký tự."); return; }
+    if (newPw !== newPw2) { setPwErr("Xác nhận mật khẩu không khớp."); return; }
+    setPwBusy(true);
+    try {
+      await window.VAApi.doiMatKhau(curPw, newPw);
+      setCurPw(""); setNewPw(""); setNewPw2("");
+      setPwDone(true); setTimeout(() => setPwDone(false), 2500);
+    } catch (e) {
+      setPwErr(e.message || "Không đổi được mật khẩu.");
+    } finally {
+      setPwBusy(false);
+    }
+  };
 
   const Row = ({ label, value, mono }) => (
     <div style={{ display: "flex", flexDirection: "column", gap: 2, minWidth: 0 }}>
@@ -1395,25 +1600,33 @@ function ProfileModal({ profile, onClose }) {
             <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: "14px 16px", padding: "14px 16px", background: "var(--bg-overlay)", borderRadius: "var(--radius-md)", border: "1px solid var(--border-subtle)" }}>
               <Row label="Họ và tên" value={profile.name} />
               <Row label="Chức vụ" value={profile.title} />
-              <Row label="Ngày sinh" value={profile.dob} mono />
-              <Row label="Số CCCD" value={profile.cccd} mono />
-              <Row label="Điện thoại" value={profile.phone} mono />
-              <Row label="Email" value={profile.email} />
-              <Row label="Ngày vào làm" value={profile.joined} mono />
+              <Row label="Tài khoản" value={profile.account} mono />
             </div>
+            <div style={{ display: "flex", alignItems: "flex-end", gap: 10 }}>
+              <div style={{ flex: 1 }}>
+                <Input label="Email" value={email} onChange={(e) => { setEmail(e.target.value); setEmailErr(""); }} placeholder="ten@vietan.vn" />
+              </div>
+              <Button variant="secondary" icon={emailSaved ? L.Check : L.Save} disabled={emailBusy || email.trim() === (profile.email || "")} onClick={saveEmail}>
+                {emailBusy ? "Đang lưu…" : emailSaved ? "Đã lưu" : "Lưu"}
+              </Button>
+            </div>
+            {emailErr && <div style={{ fontSize: 12, color: "var(--text-danger, #d92d20)" }}>{emailErr}</div>}
           </section>
 
-          {/* Thông tin đăng nhập */}
+          {/* Đổi mật khẩu */}
           <section style={{ display: "flex", flexDirection: "column", gap: 12 }}>
-            <div style={{ display: "flex", alignItems: "center", gap: 7, fontSize: 12, fontWeight: 700, textTransform: "uppercase", letterSpacing: ".05em", color: "var(--text-tertiary)" }}><L.KeyRound size={14} /> Thông tin đăng nhập</div>
-            <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: "14px 16px", padding: "14px 16px", background: "var(--bg-overlay)", borderRadius: "var(--radius-md)", border: "1px solid var(--border-subtle)", alignItems: "center" }}>
-              <Row label="Tài khoản" value={profile.account} mono />
-              <div style={{ display: "flex", flexDirection: "column", gap: 2, minWidth: 0 }}>
-                <span style={{ fontSize: 10.5, color: "var(--text-tertiary)", textTransform: "uppercase", letterSpacing: ".05em", fontWeight: 600 }}>Mật khẩu</span>
-                <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
-                  <span style={{ fontSize: 13.5, fontFamily: "var(--font-mono)", color: "var(--text-primary)" }}>{showPw ? profile.password : "••••••••••"}</span>
-                  <button type="button" onClick={() => setShowPw((v) => !v)} style={{ border: "none", background: "transparent", cursor: "pointer", color: "var(--text-tertiary)", display: "grid", placeItems: "center", padding: 0 }}>{showPw ? <L.EyeOff size={15} /> : <L.Eye size={15} />}</button>
-                </div>
+            <div style={{ display: "flex", alignItems: "center", gap: 7, fontSize: 12, fontWeight: 700, textTransform: "uppercase", letterSpacing: ".05em", color: "var(--text-tertiary)" }}><L.KeyRound size={14} /> Đổi mật khẩu</div>
+            <div style={{ display: "flex", flexDirection: "column", gap: 10, padding: "14px 16px", background: "var(--bg-overlay)", borderRadius: "var(--radius-md)", border: "1px solid var(--border-subtle)" }}>
+              <Input label="Mật khẩu hiện tại" type="password" value={curPw} onChange={(e) => { setCurPw(e.target.value); setPwErr(""); }} />
+              <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 10 }}>
+                <Input label="Mật khẩu mới" type="password" value={newPw} onChange={(e) => { setNewPw(e.target.value); setPwErr(""); }} />
+                <Input label="Xác nhận mật khẩu mới" type="password" value={newPw2} onChange={(e) => { setNewPw2(e.target.value); setPwErr(""); }} />
+              </div>
+              {pwErr && <div style={{ fontSize: 12, color: "var(--text-danger, #d92d20)" }}>{pwErr}</div>}
+              <div style={{ display: "flex", justifyContent: "flex-end" }}>
+                <Button variant="primary" icon={pwDone ? L.Check : L.KeyRound} disabled={pwBusy || !curPw || !newPw || !newPw2} onClick={changePassword}>
+                  {pwBusy ? "Đang đổi…" : pwDone ? "Đã đổi mật khẩu" : "Đổi mật khẩu"}
+                </Button>
               </div>
             </div>
           </section>
@@ -1688,4 +1901,140 @@ function ProfileButton({ profile, onLogout }) {
   );
 }
 
-window.VASessions = { OverviewScreen, CompletedScreen, RequestsScreen, SESSION_STATUS, ProfileButton, VA_PROFILES, VA_DRAFTERS, getIdent, identForName, lockSession, unlockSession, VA_ALL_SESSIONS, feeOfType, daysOverdue, vaNow, VA_TODAY, corrReqsForCcv, getCorrReqs, CCV_ABSENT };
+/* ============================================================================
+   Popup xung đột khóa soạn thảo — hiện khi 1 người khác đang mở hồ sơ này để
+   soạn thảo. "Đồng ý" sẽ giành khóa VÀ báo cho người đang giữ khóa cũ biết
+   (qua ThongBao đích danh + WebSocket, xem server/src/lib/thong-bao.js).
+   ========================================================================== */
+function ConflictModal({ lockedByName, onConfirm, onCancel, busy }) {
+  const L = window.LucideReact;
+  const { Button } = window.FSICheckinDesignSystem_019df8;
+  return (
+    <div style={{ position: "fixed", inset: 0, zIndex: 95, display: "flex", alignItems: "center", justifyContent: "center", padding: 24 }}>
+      <div onClick={onCancel} style={{ position: "absolute", inset: 0, background: "rgba(28,28,26,.5)" }} />
+      <div style={{ position: "relative", width: 460, maxWidth: "100%", background: "var(--bg-surface)", borderRadius: "var(--radius-xl)", boxShadow: "var(--shadow-xl)", overflow: "hidden" }}>
+        <div style={{ display: "flex", alignItems: "center", gap: 10, padding: "14px 18px", borderBottom: "1px solid var(--border-default)" }}>
+          <div style={{ width: 32, height: 32, borderRadius: 8, background: "var(--bg-warning)", display: "grid", placeItems: "center" }}><L.Lock size={17} color="var(--text-warning)" /></div>
+          <div style={{ fontSize: 14.5, fontWeight: 600 }}>Hồ sơ đang được soạn thảo</div>
+        </div>
+        <div style={{ padding: 18, display: "flex", flexDirection: "column", gap: 14 }}>
+          <p style={{ margin: 0, fontSize: 13.5, color: "var(--text-secondary)", lineHeight: 1.6 }}>
+            Phiên hồ sơ này đang soạn thảo bởi <b style={{ color: "var(--text-primary)" }}>{lockedByName}</b>, bạn muốn chỉnh sửa?
+          </p>
+          <div style={{ display: "flex", gap: 10, justifyContent: "flex-end" }}>
+            <Button variant="secondary" onClick={onCancel} disabled={busy}>Hủy</Button>
+            <Button variant="primary" onClick={onConfirm} disabled={busy}>{busy ? "Đang xử lý…" : "Đồng ý"}</Button>
+          </div>
+        </div>
+      </div>
+    </div>
+  );
+}
+
+// Vai trò -> file HTML đích (khớp DEST_BY_ROLE ở src/portal-login.jsx — sao
+// lại 1 bản nhỏ vì portal-login.jsx chỉ tải ở trang đăng nhập, không tải ở đây).
+const NOTIF_DEST_BY_ROLE = {
+  QTHT: "Quản trị hệ thống.html",
+  LANH_DAO: "Quản trị - Dashboard.html",
+  THU_NGAN: "Thu ngân.html",
+  KE_TOAN: "Kế toán.html",
+  LUU_TRU: "Lưu trữ - Số hóa.html",
+  CCV: "index.html",
+  TKNV: "index.html",
+};
+
+/* ============================================================================
+   Chuông thông báo thật — broadcast theo vai trò HOẶC đích danh 1 người
+   (server/src/lib/thong-bao.js), báo khi hồ sơ chuyển sang giai đoạn của vai
+   trò khác cần xử lý tiếp (vd TKNV soạn xong -> báo Thu ngân; Thu ngân cấp số
+   -> báo Lưu trữ; Lưu trữ đẩy CMC xong -> báo Kế toán), hoặc khi bị người khác
+   giành khóa soạn thảo. Đẩy real-time qua WebSocket (connectRealtime), giữ
+   thêm poll 30s làm lưới an toàn nếu socket rớt mà chưa kịp nối lại.
+   Bấm vào 1 thông báo có gắn hồ sơ sẽ điều hướng thẳng tới đúng màn xử lý.
+   ========================================================================== */
+function NotificationBell() {
+  const L = window.LucideReact;
+  const [open, setOpen] = useSx(false);
+  const [items, setItems] = useSx([]);
+  const ref = React.useRef(null);
+
+  const load = () => window.VAApi.thongBao.list().then(setItems).catch(() => {});
+  React.useEffect(() => {
+    load();
+    const t = setInterval(load, 30000);
+    const stopWs = window.VAApi.connectRealtime(() => load());
+    return () => { clearInterval(t); stopWs(); };
+  }, []);
+  React.useEffect(() => {
+    const h = (e) => { if (ref.current && !ref.current.contains(e.target)) setOpen(false); };
+    document.addEventListener("mousedown", h);
+    return () => document.removeEventListener("mousedown", h);
+  }, []);
+
+  const unread = items.filter((i) => !i.daDoc).length;
+  const toggle = async () => {
+    const willOpen = !open;
+    setOpen(willOpen);
+    if (willOpen && unread > 0) {
+      await window.VAApi.thongBao.markRead().catch(() => {});
+      load();
+    }
+  };
+
+  const openNotification = (n) => {
+    if (!n.hoSo) return;
+    const dest = NOTIF_DEST_BY_ROLE[n.vaiTro] || "index.html";
+    const params = new URLSearchParams({ hoSo: n.hoSo.id });
+    if (n.hanhDong) params.set("hanhDong", n.hanhDong);
+    // Dùng URL hash (#...) thay vì query string — trình chủ tĩnh cục bộ (serve)
+    // redirect "*.html" và làm rớt query string, còn hash luôn được giữ nguyên
+    // qua redirect vì không gửi lên server.
+    window.location.href = encodeURI(dest) + "#" + params.toString();
+  };
+
+  return (
+    <div ref={ref} style={{ position: "relative" }}>
+      <button type="button" onClick={toggle} title="Thông báo" style={{
+        position: "relative", width: 34, height: 34, display: "grid", placeItems: "center",
+        border: "none", background: "transparent", borderRadius: "var(--radius-md)", cursor: "pointer", color: "var(--text-tertiary)",
+      }}
+        onMouseEnter={(e) => (e.currentTarget.style.background = "var(--bg-overlay)")}
+        onMouseLeave={(e) => (e.currentTarget.style.background = "transparent")}>
+        <L.Bell size={18} />
+        {unread > 0 && (
+          <span style={{ position: "absolute", top: 3, right: 3, minWidth: 15, height: 15, padding: "0 4px", borderRadius: 8, background: "var(--color-danger)", color: "#fff", fontSize: 10, fontWeight: 700, display: "grid", placeItems: "center", lineHeight: 1 }}>{unread}</span>
+        )}
+      </button>
+      {open && (
+        <div style={{ position: "absolute", top: "calc(100% + 6px)", right: 0, zIndex: 60, width: 320, maxHeight: 400, overflowY: "auto", background: "var(--bg-surface)", border: "1px solid var(--border-default)", borderRadius: "var(--radius-md)", boxShadow: "var(--shadow-lg)" }}>
+          <div style={{ padding: "10px 14px", borderBottom: "1px solid var(--border-subtle)", fontSize: 13, fontWeight: 600 }}>Thông báo</div>
+          {items.length === 0 ? (
+            <div style={{ padding: "26px 14px", textAlign: "center", fontSize: 12.5, color: "var(--text-tertiary)" }}>
+              <L.BellOff size={20} style={{ marginBottom: 6, opacity: .6 }} />
+              <div>Không có thông báo nào.</div>
+            </div>
+          ) : items.map((n) => {
+            const clickable = !!n.hoSo;
+            return (
+              <div key={n.id} onClick={() => openNotification(n)} style={{
+                padding: "10px 14px", borderBottom: "1px solid var(--border-subtle)",
+                background: n.daDoc ? "transparent" : "var(--accent-muted)",
+                cursor: clickable ? "pointer" : "default",
+              }}
+                onMouseEnter={(e) => { if (clickable) e.currentTarget.style.background = "var(--bg-overlay)"; }}
+                onMouseLeave={(e) => { e.currentTarget.style.background = n.daDoc ? "transparent" : "var(--accent-muted)"; }}>
+                <div style={{ fontSize: 13, fontWeight: 600, color: "var(--text-primary)" }}>{n.tieuDe}</div>
+                {n.noiDung && <div style={{ fontSize: 12, color: "var(--text-secondary)", marginTop: 2 }}>{n.noiDung}</div>}
+                <div style={{ fontSize: 11, color: "var(--text-tertiary)", marginTop: 4 }}>
+                  {n.hoSo ? n.hoSo.maPhien + " · " : ""}{new Date(n.createdAt).toLocaleString("vi-VN")}
+                </div>
+              </div>
+            );
+          })}
+        </div>
+      )}
+    </div>
+  );
+}
+
+window.VASessions = { OverviewScreen, CompletedScreen, RequestsScreen, SESSION_STATUS, ProfileButton, NotificationBell, ConflictModal, VA_PROFILES, VA_DRAFTERS, getIdent, identForName, profileForNv, VA_ALL_SESSIONS, feeOfType, daysOverdue, vaNow, VA_TODAY, corrReqsForCcv, getCorrReqs, CCV_ABSENT, receiptRowsToday, owedAmount };

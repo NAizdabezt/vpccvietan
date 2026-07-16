@@ -76,12 +76,14 @@ model NhanVien {
   hoSoTao           HoSo[]              @relation("HoSoCreatedBy")
   hoSoTknv          HoSo[]              @relation("HoSoTknv")
   hoSoCcv           HoSo[]              @relation("HoSoCcv")
+  hoSoDangSoan      HoSo[]              @relation("HoSoDangSoanBoi")
   yeuCauGui         YeuCauHieuChinh[]   @relation("YeuCauNguoiGui")
   yeuCauDuyet       YeuCauHieuChinh[]   @relation("YeuCauNguoiDuyet")
   auditLogs         NhatKyThaoTac[]
   uyThacDuocUyThac  UyThac[]            @relation("UyThacNguoiDuocUyThac")
   uyThacChuToken    UyThac[]            @relation("UyThacChuToken")
   bieuMaus          BieuMau[]
+  thongBaos         ThongBao[]
 
   @@map("nhan_vien")
 }
@@ -133,6 +135,14 @@ enum TrangThaiHoSo {
   CHO_BO_SUNG
 }
 
+// Trước đây "/cap-so" nhận phuongThucThanhToan từ client nhưng không lưu cột
+// nào cả (bị vứt) — màn Kế toán do đó không có dữ liệu thật để hiện hình thức
+// thu (tiền mặt/chuyển khoản) cho bảng kê biên lai/đối soát.
+enum HinhThucThanhToan {
+  TIEN_MAT
+  CHUYEN_KHOAN
+}
+
 model HoSo {
   id                    String        @id @default(uuid()) @db.Uuid
   // Mã phiên hiển thị (PGD-YYYY-MMDD-NNN) — không có trong schema gốc, cần vì
@@ -155,11 +165,21 @@ model HoSo {
   noTienThu             Boolean       @default(false) @map("no_tien_thu")
   phiDichVu             Decimal       @map("phi_dich_vu") @db.Decimal(15, 0)
   soTienThucThu         Decimal?      @map("so_tien_thuc_thu") @db.Decimal(15, 0)
+  hinhThucThanhToan     HinhThucThanhToan? @map("hinh_thuc_thanh_toan")
   createdById           String        @db.Uuid @map("created_by")
   createdBy             NhanVien      @relation("HoSoCreatedBy", fields: [createdById], references: [id])
   updatedAt             DateTime      @updatedAt @map("updated_at")
   hoaDonId              String?       @db.Uuid @map("hoa_don_id")
   hoaDon                HoaDon?       @relation(fields: [hoaDonId], references: [id])
+  // Nội dung Quill đã soạn cho hồ sơ NÀY, theo từng biểu mẫu đã chọn:
+  // { [bieuMauId]: "<html>" } — khác tầng với BieuMau.noiDung (nội dung MẪU
+  // dùng chung, không gắn với 1 hồ sơ/khách hàng cụ thể).
+  noiDungDaSoan         Json?         @default("{}") @map("noi_dung_da_soan")
+  // Khóa soạn thảo THẬT (server) — thay cho khóa giả localStorage trước đây.
+  // Ai đang mở hồ sơ này ở bước Soạn thảo; null nghĩa là không ai đang mở.
+  dangSoanBoiId         String?       @db.Uuid @map("dang_soan_boi_id")
+  dangSoanBoi           NhanVien?     @relation("HoSoDangSoanBoi", fields: [dangSoanBoiId], references: [id])
+  dangSoanTu            DateTime?     @map("dang_soan_tu")
 
   fileScans             FileScan[]
   soCongChungLedger      SoCongChung[]
@@ -169,6 +189,7 @@ model HoSo {
   // không đủ để biết hồ sơ dùng (những) mẫu hợp đồng cụ thể nào — 1 hồ sơ có thể
   // ghép nhiều loại (vd vừa Chuyển nhượng QSDĐ vừa Ủy quyền).
   bieuMaus              BieuMau[]
+  thongBaos             ThongBao[]
 
   @@map("ho_so")
 }
@@ -310,6 +331,27 @@ model NhatKyThaoTac {
   maBam            String      @unique @map("ma_bam")
 
   @@map("nhat_ky_thao_tac")
+}
+
+// Thông báo — broadcast theo VAI TRÒ (vaiTro) HOẶC nhắm đúng 1 người
+// (nhanVienId, vd báo cho người soạn ban đầu khi bị giành khóa) — đúng 1 trong
+// 2 phải có. hanhDong gợi ý màn cần mở khi bấm vào thông báo (điều hướng
+// client-side). Tách riêng khỏi NhatKyThaoTac (đó là audit trail băm chuỗi cho
+// tuân thủ, không có khái niệm "đã đọc").
+model ThongBao {
+  id          String    @id @default(uuid()) @db.Uuid
+  vaiTro      VaiTro?   @map("vai_tro")
+  nhanVienId  String?   @db.Uuid @map("nhan_vien_id")
+  nhanVien    NhanVien? @relation(fields: [nhanVienId], references: [id])
+  tieuDe      String    @map("tieu_de")
+  noiDung     String?   @map("noi_dung")
+  hanhDong    String?   @map("hanh_dong")
+  hoSoId      String?   @db.Uuid @map("ho_so_id")
+  hoSo        HoSo?     @relation(fields: [hoSoId], references: [id])
+  daDoc       Boolean   @default(false) @map("da_doc")
+  createdAt   DateTime  @default(now()) @map("created_at")
+
+  @@map("thong_bao")
 }
 
 // ---------------------------------------------------------------------------

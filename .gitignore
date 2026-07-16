@@ -32,5 +32,8 @@ desktop.ini
 .cache/
 .parcel-cache/
 
+# File số hóa người dùng tải lên thật (Mốc 6) — không commit
+server/uploads/
+
 # Claude Code session-local state (not project config)
 .claude/scheduled_tasks.lock

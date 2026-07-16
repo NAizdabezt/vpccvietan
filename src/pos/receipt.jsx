@@ -39,10 +39,13 @@ function SegPay({ value, onChange }) {
   );
 }
 
-/* Một thẻ hồ sơ trong phiên — số CC + phí + công nợ riêng */
-function FileCard({ index, file, onChange }) {
+/* Một thẻ hồ sơ trong phiên — số CC + phí + công nợ riêng.
+   hint = { nam, next, lastUsed, missing } thật từ server (GET /so-cc-hint);
+   book = tiền tố hiển thị theo loại hồ sơ (0036/CT/SY). CHỈ để hiển thị/gợi ý
+   — /cap-so ở server vẫn tự chọn số cuối cùng bằng transaction chống trùng
+   riêng, số hiện ở đây có thể lệch nếu người khác vừa cấp số trước đó. */
+function FileCard({ index, file, onChange, hint, book }) {
   const L = window.LucideReact;
-  const D = window.POS_DATA;
   const { fmtVND, fullSoCC } = window.POSFmt;
   const { Checkbox } = window.FSICheckinDesignSystem_019df8;
 
@@ -53,8 +56,8 @@ function FileCard({ index, file, onChange }) {
   // Smart hint trạng thái số CC
   let numState;
   if (!soCC) numState = { tone: "muted", icon: "Hash", text: "Chưa cấp số" };
-  else if (D.soCC.missing.includes(soCC)) numState = { tone: "info", icon: "ArrowDownToLine", text: "Lấp số thiếu" };
-  else if (soCC <= D.soCC.lastUsed) numState = { tone: "danger", icon: "Lock", text: "Số đã cấp — khóa cứng" };
+  else if (hint.missing.includes(soCC)) numState = { tone: "info", icon: "ArrowDownToLine", text: "Lấp số thiếu" };
+  else if (soCC <= hint.lastUsed) numState = { tone: "danger", icon: "Lock", text: "Số đã cấp — khóa cứng" };
   else numState = { tone: "success", icon: "Check", text: "Số khả dụng" };
   const toneVar = { muted: "--text-tertiary", info: "--text-info", danger: "--text-danger", success: "--text-success" }[numState.tone];
   const SIcon = L[numState.icon];
@@ -80,7 +83,7 @@ function FileCard({ index, file, onChange }) {
             onChange={(e) => onChange({ soCC: e.target.value ? parseInt(e.target.value, 10) : null })}
             style={{ ...fieldStyle, borderColor: locked ? "var(--color-danger)" : "var(--border-default)" }} />
           <div style={{ display: "flex", alignItems: "center", gap: 5, marginTop: 5, fontSize: 11, fontWeight: 500, color: `var(${toneVar})` }}>
-            <SIcon size={11} /> {soCC ? <span style={{ fontFamily: "var(--font-mono)" }}>{fullSoCC(soCC)}</span> : numState.text}
+            <SIcon size={11} /> {soCC ? <span style={{ fontFamily: "var(--font-mono)" }}>{fullSoCC(soCC, book, hint.nam)}</span> : numState.text}
           </div>
         </div>
         {/* Phí */}
@@ -110,15 +113,17 @@ function FileCard({ index, file, onChange }) {
   );
 }
 
-function ReceiptForm({ row, onClose, onConfirm }) {
+function ReceiptForm({ row, hint, onClose, onConfirm }) {
   const L = window.LucideReact;
-  const D = window.POS_DATA;
   const { fmtVND, creatorName, fullSoCC } = window.POSFmt;
   const { Button } = window.FSICheckinDesignSystem_019df8;
+  // Tiền tố hiển thị theo loại hồ sơ — khớp đúng /cap-so ở server (0036=HOP_DONG,
+  // CT=CHUNG_THUC, SY=SAO_Y); chỉ để hiện Smart Hint, không quyết định số thật.
+  const book = { HOP_DONG: "0036", CHUNG_THUC: "CT", SAO_Y: "SY" }[row.loaiHoSo] || "0036";
 
   // Khởi tạo state các hồ sơ; tự gán số CC kế tiếp cho hồ sơ chưa có
   const [files, setFiles] = useStateR(() => {
-    let n = D.soCC.next;
+    let n = hint.next;
     return row.files.map((f) => {
       const soCC = f.soCC != null ? f.soCC : n++;
       return { ...f, soCC, _feeEdited: false };
@@ -133,7 +138,7 @@ function ReceiptForm({ row, onClose, onConfirm }) {
   const tongPhi = files.reduce((a, f) => a + (f.fee || 0), 0);
   const thucThu = files.reduce((a, f) => a + (f.debtMoney ? 0 : (f.fee || 0)), 0);
   const debtCount = files.filter((f) => f.debtMoney).length;
-  const anyLocked = files.some((f) => f.soCC && f.soCC <= D.soCC.lastUsed && !D.soCC.missing.includes(f.soCC) && f.status !== "paid");
+  const anyLocked = files.some((f) => f.soCC && f.soCC <= hint.lastUsed && !hint.missing.includes(f.soCC) && f.status !== "paid");
 
   return (
     <div style={{ display: "flex", flexDirection: "column", height: "100%", minHeight: 0 }}>
@@ -149,12 +154,12 @@ function ReceiptForm({ row, onClose, onConfirm }) {
         </div>
 
         {/* Danh sách hồ sơ */}
-        <FieldSection icon="Files" title="Hồ sơ trong phiên" hint={"Quyển " + D.soCC.book + "/" + D.soCC.year + " · " + files.length + " hồ sơ"}>
-          {files.map((f, i) => <FileCard key={f.id} index={i} file={f} onChange={(p) => setFile(i, p)} />)}
-          {D.soCC.missing.length > 0 && (
+        <FieldSection icon="Files" title="Hồ sơ trong phiên" hint={"Quyển " + book + "/" + hint.nam + " · " + files.length + " hồ sơ"}>
+          {files.map((f, i) => <FileCard key={f.id} index={i} file={f} onChange={(p) => setFile(i, p)} hint={hint} book={book} />)}
+          {hint.missing.length > 0 && (
             <div style={{ display: "flex", alignItems: "center", gap: 8, marginTop: 2, flexWrap: "wrap", fontSize: 11.5 }}>
               <span style={{ color: "var(--text-tertiary)" }}>Số thiếu cần ưu tiên lấp:</span>
-              {D.soCC.missing.map((m) => (
+              {hint.missing.map((m) => (
                 <span key={m} style={{ fontFamily: "var(--font-mono)", fontWeight: 600, color: "var(--text-danger)", background: "var(--bg-danger)", border: "1px solid var(--border-danger)", borderRadius: "var(--radius-full)", padding: "1px 9px" }}>{m}</span>
               ))}
             </div>
@@ -192,7 +197,7 @@ function ReceiptForm({ row, onClose, onConfirm }) {
           <Button variant="secondary" onClick={onClose}>Lưu nháp</Button>
           <Button variant="primary" icon={L.Printer} fullWidth disabled={anyLocked}
             onClick={() => {
-              if (onConfirm) onConfirm({ soCC: files[0] && files[0].soCC ? fullSoCC(files[0].soCC) : null, thucThu, files });
+              if (onConfirm) onConfirm({ soCC: files[0] && files[0].soCC ? fullSoCC(files[0].soCC, book, hint.nam) : null, thucThu, files, pay });
               else onClose();
             }}>Xác nhận thu tiền & In phơi</Button>
         </div>

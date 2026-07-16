@@ -4,13 +4,14 @@ const jwt = require("jsonwebtoken");
 const { prisma } = require("../lib/prisma");
 const { ghiNhatKy } = require("../lib/audit");
 const { requireAuth } = require("../middleware/auth");
+const { asyncHandler } = require("../lib/asyncHandler");
 
 const router = express.Router();
 
 const MAX_SAI_MAT_KHAU = 5;
 const failedAttempts = new Map(); // email -> count (in-memory; đủ cho demo 1 tiến trình)
 
-router.post("/login", async (req, res) => {
+router.post("/login", asyncHandler(async (req, res) => {
   // Chấp nhận cả email đầy đủ lẫn mã nhân viên ngắn (vd "linh.tt") để khớp
   // với ô "Tên đăng nhập" đã có sẵn trên các form frontend.
   const { taiKhoan, email: emailField, matKhau } = req.body || {};
@@ -36,6 +37,10 @@ router.post("/login", async (req, res) => {
   }
   failedAttempts.delete(nv.email);
 
+  // REQ-050: chưa có cờ mustChange riêng trong schema — dùng lastLogin null làm
+  // dấu hiệu "chưa từng đăng nhập" (đọc TRƯỚC khi ghi đè lastLogin bên dưới).
+  const mustChangePassword = !nv.lastLogin;
+
   const payload = { id: nv.id, maNhanVien: nv.maNhanVien, hoTen: nv.hoTen, vaiTro: nv.vaiTro };
   const token = jwt.sign(payload, process.env.JWT_SECRET, { expiresIn: "8h" });
 
@@ -48,10 +53,10 @@ router.post("/login", async (req, res) => {
     ipThietBi: req.ip,
   });
 
-  res.json({ token, nhanVien: payload });
-});
+  res.json({ token, nhanVien: payload, mustChangePassword });
+}));
 
-router.post("/doi-mat-khau", requireAuth, async (req, res) => {
+router.post("/doi-mat-khau", requireAuth, asyncHandler(async (req, res) => {
   const { matKhauCu, matKhauMoi } = req.body || {};
   if (!matKhauCu || !matKhauMoi) return res.status(400).json({ error: "Thiếu mật khẩu cũ/mới" });
 
@@ -70,6 +75,6 @@ router.post("/doi-mat-khau", requireAuth, async (req, res) => {
   });
 
   res.json({ ok: true });
-});
+}));
 
 module.exports = router;

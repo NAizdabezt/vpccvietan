@@ -61,39 +61,53 @@ function PosSidebar({ active, onNav, role }) {
   );
 }
 
-function PosTopbar({ active, role, onLogout }) {
-  const { IconButton } = window.FSICheckinDesignSystem_019df8;
-  const { Bell } = window.LucideReact;
-  const { ProfileButton, VA_PROFILES } = window.VASessions;
-  const D = window.POS_DATA;
-  const profile = role === "acct" ? VA_PROFILES["ke.dv"] : VA_PROFILES["ha.ptt"];
+function PosTopbar({ active, role, onLogout, nv }) {
+  const { ProfileButton, VA_PROFILES, profileForNv, VA_TODAY } = window.VASessions;
+  const profile = profileForNv(nv) || (role === "acct" ? VA_PROFILES["ke.dv"] : VA_PROFILES["ha.ptt"]);
   const roleLabel = role === "acct" ? "Kế toán" : "Thu ngân";
+  const todayDMY = VA_TODAY.split("-").reverse().join("/");
   return (
     <header style={{ height: "var(--topbar-height)", flexShrink: 0, display: "flex", alignItems: "center", justifyContent: "space-between", padding: "0 20px", borderBottom: "1px solid var(--border-subtle)", background: "var(--bg-base)" }}>
       <div style={{ fontSize: 14 }}>
         <span style={{ color: "var(--text-tertiary)" }}>VPCC Việt An</span>
         <span style={{ color: "var(--text-tertiary)", margin: "0 6px" }}>/</span>
         <span style={{ color: "var(--text-primary)", fontWeight: 500 }}>{POS_TITLES[active]}</span>
-        <span style={{ color: "var(--text-tertiary)", marginLeft: 12, fontSize: 12.5 }}>{D.shift} · {D.today}</span>
+        <span style={{ color: "var(--text-tertiary)", marginLeft: 12, fontSize: 12.5 }}>{todayDMY}</span>
       </div>
       <div style={{ display: "flex", alignItems: "center", gap: 14 }}>
         <span style={{ display: "inline-flex", alignItems: "center", gap: 6, fontSize: 12, fontWeight: 600, padding: "4px 11px", borderRadius: "var(--radius-full)", background: "var(--accent-muted)", color: "var(--accent-hover)" }}>
           {roleLabel}
         </span>
-        <IconButton icon={Bell} badge={2} aria-label="Thông báo" />
+        <window.VASessions.NotificationBell />
         <ProfileButton profile={profile} onLogout={onLogout} />
       </div>
     </header>
   );
 }
 
+// KPI ngày — trước đây đọc từ POS_DATA.stats tĩnh, giờ tính thẳng từ dữ liệu
+// hồ sơ thật (window.VAStore, cùng nguồn với Luồng tổng quan) nên luôn khớp.
 function StatStrip() {
   const { StatCard } = window.FSICheckinDesignSystem_019df8;
   const L = window.LucideReact;
-  const D = window.POS_DATA;
+  const VS = window.VASessions;
+  const rows = window.VAStore.useHoSoStore();
+
+  const chargedToday = VS.receiptRowsToday(rows);
+  const revenueToday = chargedToday.reduce((sum, r) => sum + (r.amount || 0), 0);
+  const waitingCount = rows.filter((r) => r.status === "waitNumberPay").length;
+  const debtCount = rows.filter((r) => r.noTienThu || r.noHoSo).length;
+
+  const stats = [
+    { label: "Phiếu đã thu", value: String(chargedToday.length), icon: "ReceiptText", tone: "default" },
+    { label: "Doanh thu ca", value: revenueToday.toLocaleString("vi-VN") + "₫", icon: "TrendingUp", tone: "success" },
+    { label: "Đang chờ thu", value: String(waitingCount), icon: "Clock", tone: "warning" },
+    { label: "Công nợ", value: String(debtCount), icon: "AlertTriangle", tone: debtCount > 0 ? "danger" : "default" },
+  ];
+
   return (
     <div style={{ display: "grid", gridTemplateColumns: "repeat(4, 1fr)", gap: 12 }}>
-      {D.stats.map((s) => (
+      {stats.map((s) => (
         <StatCard key={s.label} label={s.label} value={s.value} icon={L[s.icon]} danger={s.tone === "danger"} />
       ))}
     </div>

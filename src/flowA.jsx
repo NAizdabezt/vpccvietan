@@ -58,16 +58,16 @@ function Panel({ title, desc, action, children, pad = 16, style }) {
   );
 }
 
-function FlowA({ density, session, onExit, onStatus, onMeta, mode, role }) {
+function FlowA({ density, session, onExit, onStatus, onMeta, mode, role, currentNv }) {
   const L = window.LucideReact;
   const D = window.VA_DATA;
-  const TPLS = (window.VATemplates && window.VATemplates.list()) || D.templates;
   const P = window.VAPieces;
   const { Input, Button, StatCard } = window.FSICheckinDesignSystem_019df8;
   const { DraftWorkspace } = window.VAEditor;
   const VS = window.VASessions;
-  // Người soạn mặc định = người đang trong phiên (tài khoản đang đăng nhập)
-  const meProfile = VS.VA_PROFILES[role === "ccv" ? "viet.nq" : "linh.tt"];
+  // Người soạn mặc định = người đang trong phiên (tài khoản đang đăng nhập thật —
+  // KHÔNG dùng VA_PROFILES mock, tài khoản mới tạo không có trong bảng đó).
+  const meProfile = VS.profileForNv(currentNv) || VS.VA_PROFILES[role === "ccv" ? "viet.nq" : "linh.tt"];
   const meName = (role === "ccv" ? "CCV " : "") + meProfile.name;
   const drafterOf = (name) => name === meName ? VS.getIdent(meProfile) : VS.identForName(name);
   const [drafter, setDrafter] = useStateA(() => ({ name: meName, ident: VS.getIdent(meProfile) }));
@@ -75,6 +75,21 @@ function FlowA({ density, session, onExit, onStatus, onMeta, mode, role }) {
   const compact = density === "compact";
   const ro = mode === "view";
   const seeded = mode !== "new";
+
+  // Biểu mẫu thật từ DB (thay cho window.VATemplates giả lập) — cần id là UUID
+  // thật để gửi lên hoSo.create. Kho biểu mẫu tùy chỉnh (Template Manager,
+  // localStorage) dùng làm nguồn dự phòng trong lúc chờ tải xong / lỗi mạng.
+  const [realTpls, setRealTpls] = useStateA([]);
+  React.useEffect(() => {
+    window.VAApi.bieuMau.list()
+      .then((rows) => setRealTpls(rows.map((r) => ({
+        id: r.id, tid: r.id, name: r.ten, group: r.nhom,
+        kind: window.VATemplateModel.nhomToKind(r.nhom),
+      }))))
+      .catch((e) => console.error("Không tải được danh sách biểu mẫu:", e));
+  }, []);
+  const TPLS = realTpls.length ? realTpls : ((window.VATemplates && window.VATemplates.list()) || D.templates);
+
   const initPicked = (seeded && session && session.types && session.types.length)
     ? session.types.map((nm) => { const t = TPLS.find((x) => x.name === nm) || { id: nm, name: nm, group: "" }; return { id: t.id, tid: t.id, name: t.name, group: t.group, kind: t.kind }; })
     : [{ id: "t1", tid: "t1", name: "HĐ Chuyển nhượng QSDĐ", group: "Bất động sản", kind: "land" }];
@@ -83,11 +98,16 @@ function FlowA({ density, session, onExit, onStatus, onMeta, mode, role }) {
   const [maxReached, setMaxReached] = useStateA(seeded ? 4 : 0);
   const [customer, setCustomer] = useStateA(session && session.customer ? session.customer : "");
   const [picked, setPicked] = useStateA(initPicked);
+  const [hoSoId, setHoSoId] = useStateA(session && session.hoSoId ? session.hoSoId : null);
+  const [saving, setSaving] = useStateA(false);
   const [ocr, setOcr] = useStateA(() => D.ocrDocs.map((d) => ({ ...d, fields: d.fields.map((f) => ({ ...f })) })));
   const [scanned, setScanned] = useStateA(seeded);
   const [checks, setChecks] = useStateA(() => seeded ? D.ocrDocs.reduce((a, d) => { a[d.id] = true; return a; }, {}) : {});
   const [shots, setShots] = useStateA(() => seeded ? [{ id: "shot-seed", label: "Ảnh tra cứu 1", hue: 200 }] : []);
   const [printCfgs, setPrintCfgs] = useStateA({});
+  // Nội dung Quill đã soạn cho phiên NÀY, theo từng biểu mẫu — { [bieuMauId]: html }.
+  // Khác tầng với BieuMau.noiDung (nội dung mẫu dùng chung); lưu vào HoSo.noiDungDaSoan.
+  const [draftHtml, setDraftHtml] = useStateA({});
   const [query, setQuery] = useStateA(session && session.customer ? session.customer : "");
   const [reusedFrom, setReusedFrom] = useStateA(null);
   const [toast, setToast] = useStateA(null);
@@ -106,6 +126,27 @@ function FlowA({ density, session, onExit, onStatus, onMeta, mode, role }) {
 
   React.useEffect(() => { if (onMeta) onMeta({ customer: customer, types: picked.map((p) => p.name) }); }, [customer, picked]);
 
+  // Mở lại phiên đã có hồ sơ (kể cả phiên vừa tạo trong lượt này) -> nạp lại
+  // nội dung Quill đã lưu trước đó cho hồ sơ này, để bước Soạn thảo không sinh
+  // lại từ đầu và mất nội dung đã gõ/auto-fill trong lượt mở trước.
+  React.useEffect(() => {
+    if (!hoSoId) return;
+    window.VAApi.hoSo.get(hoSoId)
+      .then((row) => setDraftHtml(row.noiDungDaSoan || {}))
+      .catch(() => {});
+  }, [hoSoId]);
+
+  // Khi danh sách biểu mẫu thật tải xong, đối chiếu lại theo tên để thay id giả
+  // lập ban đầu (vd "t1" — dùng làm mặc định lúc TPLS chưa tải xong) bằng UUID
+  // thật, tránh gửi id không hợp lệ lên hoSo.create.
+  React.useEffect(() => {
+    if (!realTpls.length) return;
+    setPicked((arr) => arr.map((p) => {
+      const match = realTpls.find((t) => t.name === p.name);
+      return match ? { ...p, id: match.id, tid: match.id, group: match.group, kind: match.kind } : p;
+    }));
+  }, [realTpls]);
+
   const setField = (docId, fi, val) => setOcr((arr) => arr.map((d) => d.id === docId ? { ...d, fields: d.fields.map((f, i) => i === fi ? { ...f, value: val } : f) } : d));
   const addTemplate = (tid) => { const t = TPLS.find((x) => x.id === tid); if (t && !picked.find((p) => p.id === tid)) setPicked((p) => [...p, { id: tid, tid, name: t.name, group: t.group, kind: t.kind }]); };
   const togglePick = (t) => { if (ro) return; setPicked((p) => p.find((x) => x.id === t.id) ? p.filter((x) => x.id !== t.id) : [...p, { id: t.id, tid: t.id, name: t.name, group: t.group, kind: t.kind }]); };
@@ -114,6 +155,86 @@ function FlowA({ density, session, onExit, onStatus, onMeta, mode, role }) {
 
   const canNext = step === 0 ? (customer.trim() && picked.length > 0) : step === 2 ? (allChecked && shots.length > 0) : true;
   const addOptions = TPLS.filter((t) => !picked.find((p) => p.id === t.id));
+
+  // Tạo hồ sơ thật trên server nếu phiên chưa có (chỉ gọi 1 lần — các lần sau
+  // trả thẳng hoSoId đã lưu). loaiHoSo hardcode HOP_DONG vì mọi biểu mẫu builtin
+  // hiện có đều là dạng hợp đồng, UI chưa có lựa chọn Chứng thực/Sao y.
+  const ensureHoSo = async () => {
+    if (hoSoId) return hoSoId;
+    const kh = await window.VAApi.khachHang.create({ hoTen: customer.trim() });
+    const row = await window.VAApi.hoSo.create({
+      loaiHoSo: "HOP_DONG",
+      khachHangId: kh.id,
+      bieuMauIds: picked.map((p) => p.id),
+    });
+    setHoSoId(row.id);
+    if (onMeta) onMeta({ hoSoId: row.id, id: row.maPhien });
+    window.VAStore.refresh();
+    return row.id;
+  };
+
+  const goNext = async () => {
+    if (step !== 0) { go(step + 1); return; }
+    setSaving(true);
+    try {
+      await ensureHoSo();
+      go(1);
+    } catch (e) {
+      setToast({ tone: "danger", title: "Không tạo được hồ sơ", message: e.message || "Không rõ nguyên nhân" });
+    } finally {
+      setSaving(false);
+    }
+  };
+
+  // Đẩy nội dung Quill hiện tại (draftHtml) lên backend — dùng chung cho "Lưu
+  // nháp" và "In hợp đồng" (in luôn dùng bản mới nhất, không phải bản đã lưu cũ).
+  const flushNoiDung = async (id) => {
+    if (Object.keys(draftHtml).length) await window.VAApi.hoSo.saveNoiDung(id, draftHtml);
+  };
+
+  const saveDraft = async () => {
+    const ready = customer.trim() && picked.length > 0;
+    if (!ready) {
+      setToast({ title: "Đã lưu nháp", message: "Phiên " + session.id + " được lưu ở trạng thái nháp." });
+      if (onStatus) onStatus("draft");
+      return;
+    }
+    setSaving(true);
+    try {
+      const id = await ensureHoSo();
+      await flushNoiDung(id);
+      setToast({ title: "Đã lưu nháp", message: "Phiên " + session.id + " được lưu ở trạng thái nháp." });
+      if (onStatus) onStatus("draft");
+    } catch (e) {
+      setToast({ tone: "danger", title: "Không lưu được nháp", message: e.message || "Không rõ nguyên nhân" });
+    } finally {
+      setSaving(false);
+    }
+  };
+
+  // In hợp đồng thật (WYSIWYG) — lưu nội dung mới nhất trước rồi mới in, để bản
+  // in luôn khớp đúng những gì đang hiển thị trong Quill lúc bấm nút.
+  const printNow = async () => {
+    try {
+      if (hoSoId) await flushNoiDung(hoSoId);
+    } catch (e) { /* không chặn in nếu lưu lỗi — vẫn in được bản đang có trên màn hình */ }
+    window.print();
+  };
+
+  const finishDraft = async () => {
+    setSaving(true);
+    try {
+      const id = await ensureHoSo();
+      await window.VAApi.hoSo.chuyenTrangThai(id, "CHO_THU_NGAN");
+      window.VAStore.patchLocal(id, { status: "waitNumberPay", updatedAt: VS.vaNow() });
+      setToast({ title: "Đã gửi lệnh in", message: "Hồ sơ chuyển sang Thu ngân — chờ cấp số CC & thu phí." });
+      setTimeout(() => { onExit && onExit(); }, 1100);
+    } catch (e) {
+      setToast({ tone: "danger", title: "Không chuyển được sang Thu ngân", message: e.message || "Không rõ nguyên nhân" });
+    } finally {
+      setSaving(false);
+    }
+  };
 
   let body;
   if (step === 0) {
@@ -215,14 +336,15 @@ function FlowA({ density, session, onExit, onStatus, onMeta, mode, role }) {
       </div>
     );
   } else if (step === 3) {
-    body = <DraftWorkspace tabs={picked} ocrDocs={ocr} compact={compact} addOptions={addOptions} onAddTemplate={addTemplate} readOnly={ro} drafter={drafter} />;
+    body = <DraftWorkspace tabs={picked} ocrDocs={ocr} compact={compact} addOptions={addOptions} onAddTemplate={addTemplate} readOnly={ro} drafter={drafter}
+      savedHtml={draftHtml} onContentChange={(tabId, html) => setDraftHtml((m) => ({ ...m, [tabId]: html }))} />;
   } else {
     body = (
       <window.VAPrintStep
         picked={picked} scanImages={D.scanImages} shots={shots}
-        cfgs={printCfgs} setCfgs={setPrintCfgs} ro={ro}
+        cfgs={printCfgs} setCfgs={setPrintCfgs} ro={ro} saving={saving}
         drafter={drafter} setDrafterByName={setDrafterByName} drafterOptions={VS.VA_DRAFTERS} meName={meName}
-        onPrint={() => { setToast({ title: "Đã gửi lệnh in", message: "Hồ sơ chuyển sang Thu ngân — chờ cấp số CC & thu phí." }); if (onStatus) onStatus("waitNumberPay"); }}
+        onPrint={finishDraft} draftHtml={draftHtml} onPrintNow={printNow}
       />
     );
   }
@@ -243,14 +365,14 @@ function FlowA({ density, session, onExit, onStatus, onMeta, mode, role }) {
           {ro
             ? <Button variant="secondary" onClick={() => onExit && onExit()}>Đóng</Button>
             : <>
-                <Button variant="secondary" onClick={() => { setToast({ title: "Đã lưu nháp", message: "Phiên " + session.id + " được lưu ở trạng thái nháp." }); if (onStatus) onStatus("draft"); }}>Lưu nháp</Button>
-                {step < 4 && <Button variant="primary" icon={L.ArrowRight} disabled={!canNext} onClick={() => go(step + 1)}>Tiếp tục</Button>}
+                <Button variant="secondary" disabled={saving} onClick={saveDraft}>Lưu nháp</Button>
+                {step < 4 && <Button variant="primary" icon={L.ArrowRight} disabled={!canNext || saving} onClick={goNext}>Tiếp tục</Button>}
               </>}
         </div>
       </div>
       {toast && (
         <div style={{ position: "fixed", right: 24, bottom: 24, zIndex: 90 }}>
-          <window.FSICheckinDesignSystem_019df8.Toast tone="success" title={toast.title} message={toast.message} onClose={() => setToast(null)} />
+          <window.FSICheckinDesignSystem_019df8.Toast tone={toast.tone || "success"} title={toast.title} message={toast.message} onClose={() => setToast(null)} />
         </div>
       )}
     </div>

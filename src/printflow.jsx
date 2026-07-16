@@ -39,6 +39,30 @@ function QtyStepper({ icon, label, value, onChange, badge, disabled }) {
 }
 const pfQtyBtn = { width: 28, textAlign: "center", border: "none", background: "transparent", cursor: "pointer", fontSize: 16, color: "var(--text-secondary)", fontFamily: "var(--font-sans)" };
 
+/* Bản in THẬT của các hợp đồng đã chọn — WYSIWYG: dùng lại đúng khung
+   ".va-quill-page"/".ql-editor" đang hiển thị lúc soạn (src/editor.jsx#DraftPage),
+   không dựng lại kiểu khác. Ẩn khi xem thường, chỉ hiện khi in nhờ CSS
+   "@media print" trong index.html (khớp id "va-print-contracts"). Mỗi hợp đồng
+   1 trang riêng (ngắt trang bằng class "va-print-contract-page"). */
+function ContractPrintView({ picked, draftHtml, drafter }) {
+  const M = window.VATemplateModel;
+  const ident = (drafter && drafter.ident) || "";
+  return (
+    <div id="va-print-contracts" style={{ display: "none" }}>
+      {picked.map((c) => (
+        <div key={c.id} className="va-print-contract-page va-quill-page" style={{ margin: "0 auto" }}>
+          <div className="ql-editor" style={{ padding: "44px 50px" }}
+            dangerouslySetInnerHTML={{ __html: (draftHtml && draftHtml[c.id]) || M.htmlOf(c) }} />
+          <div style={{ padding: "10px 50px 26px", borderTop: "1px solid #e7e7e3", display: "flex", justifyContent: "flex-end", alignItems: "baseline", gap: 6, fontSize: 11.5, color: "#9a9a93" }}>
+            <span>Người soạn:</span>
+            <span style={{ fontWeight: 700, letterSpacing: ".12em", color: "#5b5b54" }}>{ident || "—"}</span>
+          </div>
+        </div>
+      ))}
+    </div>
+  );
+}
+
 /* Một nhóm giấy tờ (theo loại) trong 1 hợp đồng — bật/tắt in ở từng giấy tờ */
 function DocGroupRow({ type, imgs, cfg, disabled, onLayout, onToggleDoc }) {
   const L = window.LucideReact;
@@ -175,7 +199,7 @@ function ContractCard({ contract, idx, cfg, groups, shots, disabled, update, def
   );
 }
 
-function PrintStep({ picked, scanImages, shots, cfgs, setCfgs, ro, onPrint, drafter, setDrafterByName, drafterOptions, meName }) {
+function PrintStep({ picked, scanImages, shots, cfgs, setCfgs, ro, onPrint, saving, drafter, setDrafterByName, drafterOptions, meName, draftHtml, onPrintNow }) {
   const L = window.LucideReact;
   const { Button } = window.FSICheckinDesignSystem_019df8;
 
@@ -262,11 +286,15 @@ function PrintStep({ picked, scanImages, shots, cfgs, setCfgs, ro, onPrint, draf
             <span style={{ fontWeight: 600, color: "var(--accent-hover)", display: "inline-flex", alignItems: "center", gap: 6 }}><L.FileStack size={14} /> Khổ A4 hồ sơ đính kèm</span>
             <span style={{ fontWeight: 700, fontFamily: "var(--font-mono)", color: "var(--accent-hover)" }}>{totalAttach} khổ</span>
           </div>
+          {/* Xem/in hợp đồng thật (WYSIWYG) — tách riêng khỏi việc chuyển Thu ngân,
+              nên vẫn dùng được cả khi xem lại hồ sơ cũ (ro=true). */}
+          <Button variant="secondary" icon={L.Printer} fullWidth onClick={onPrintNow}>Xem &amp; in hợp đồng</Button>
           {ro
             ? <div style={{ display: "flex", alignItems: "center", gap: 8, fontSize: 12.5, color: "var(--text-tertiary)", padding: "10px 12px", background: "var(--bg-overlay)", borderRadius: "var(--radius-md)" }}><L.Eye size={15} /> Chế độ chỉ xem — phiên đang chờ chốt số công chứng.</div>
-            : <Button variant="primary" icon={L.Printer} fullWidth onClick={onPrint}>In &amp; chuyển Thu ngân</Button>}
+            : <Button variant="primary" icon={L.Send} fullWidth disabled={saving} onClick={onPrint}>{saving ? "Đang xử lý…" : "Chuyển Thu ngân"}</Button>}
         </div>
       </section>
+      <ContractPrintView picked={picked} draftHtml={draftHtml} drafter={drafter} />
     </div>
   );
 }

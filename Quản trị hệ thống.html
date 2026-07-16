@@ -25,6 +25,7 @@
 <script src="assets/lucide-react-shim.js"></script>
 <script src="_ds/fsi-checkin-design-system-019df8fd-82d2-706c-bcbd-e163bd6586ff/_ds_bundle.js"></script>
 <script src="src/api-client.jsx"></script>
+<script type="text/babel" src="src/sessions.jsx"></script>
 
 <script type="text/babel" src="src/sysadmin/data.jsx"></script>
 <script type="text/babel" src="src/sysadmin/designer-graph.jsx"></script>
@@ -76,7 +77,7 @@ function App() {
     <div style={{ display: "flex", height: "100%", background: "var(--bg-base)" }}>
       <SaSidebar active={page} onNav={setPage} />
       <div style={{ flex: 1, display: "flex", flexDirection: "column", minWidth: 0, minHeight: 0 }}>
-        <SaTopbar active={page} onLogout={goPortal} />
+        <SaTopbar active={page} onLogout={goPortal} nv={nv} />
         <main style={{ flex: 1, minHeight: 0, overflowY: fullBleed ? "hidden" : "auto", padding: 20 }}>
           {fullBleed
             ? <div style={{ height: "100%", minHeight: 0 }}>{view}</div>

@@ -94,9 +94,16 @@ const VA_DATA = {
   // Mẫu hợp đồng
   templates: [
     { id: "t1", name: "HĐ Chuyển nhượng QSDĐ", group: "Bất động sản", active: true },
-    { id: "t2", name: "HĐ Mua bán xe", group: "Động sản" },
-    { id: "t3", name: "Văn bản ủy quyền", group: "Ủy quyền" },
     { id: "t4", name: "HĐ Tặng cho QSDĐ", group: "Bất động sản" },
+    { id: "t5", name: "Giấy ủy quyền", group: "Ủy quyền" },
+    { id: "t6", name: "HĐ Ủy quyền toàn quyền nhà đất", group: "Ủy quyền" },
+    { id: "t7", name: "Thụ ủy hợp đồng ủy quyền", group: "Ủy quyền" },
+    { id: "t8", name: "Giấy ủy quyền thành lập doanh nghiệp", group: "Ủy quyền" },
+    { id: "t9", name: "HĐ Mua bán xe máy", group: "Động sản" },
+    { id: "t10", name: "HĐ Mua bán xe ô tô", group: "Động sản" },
+    { id: "t11", name: "HĐ Ủy quyền xe máy", group: "Ủy quyền xe" },
+    { id: "t12", name: "HĐ Ủy quyền xe ô tô", group: "Ủy quyền xe" },
+    { id: "t13", name: "HĐ Ủy quyền xe ô tô (1 bên)", group: "Ủy quyền xe" },
   ],
 
   // Gõ tắt pháp lý (snippets)

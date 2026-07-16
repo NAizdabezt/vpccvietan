@@ -63,11 +63,10 @@ function ArcSidebar({ active, onNav }) {
   );
 }
 
-function ArcTopbar({ active, onLogout }) {
-  const { IconButton } = window.FSICheckinDesignSystem_019df8;
-  const { Bell } = window.LucideReact;
-  const { ProfileButton, VA_PROFILES } = window.VASessions;
+function ArcTopbar({ active, onLogout, nv }) {
+  const { ProfileButton, VA_PROFILES, profileForNv } = window.VASessions;
   const D = window.ARC_DATA;
+  const profile = profileForNv(nv) || VA_PROFILES["tuan.hm"];
   return (
     <header style={{ height: "var(--topbar-height)", flexShrink: 0, display: "flex", alignItems: "center", justifyContent: "space-between", padding: "0 20px", borderBottom: "1px solid var(--border-subtle)", background: "var(--bg-base)" }}>
       <div style={{ fontSize: 14 }}>
@@ -80,8 +79,8 @@ function ArcTopbar({ active, onLogout }) {
         <span style={{ display: "inline-flex", alignItems: "center", gap: 6, fontSize: 12, fontWeight: 600, padding: "4px 10px", borderRadius: "var(--radius-full)", background: "var(--accent-muted)", color: "var(--accent-hover)" }}>
           Lưu trữ / Scan
         </span>
-        <IconButton icon={Bell} badge={3} aria-label="Thông báo" />
-        <ProfileButton profile={VA_PROFILES["tuan.hm"]} onLogout={onLogout} />
+        <window.VASessions.NotificationBell />
+        <ProfileButton profile={profile} onLogout={onLogout} />
       </div>
     </header>
   );

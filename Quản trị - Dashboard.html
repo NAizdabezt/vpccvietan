@@ -25,6 +25,7 @@
 <script src="assets/lucide-react-shim.js"></script>
 <script src="_ds/fsi-checkin-design-system-019df8fd-82d2-706c-bcbd-e163bd6586ff/_ds_bundle.js"></script>
 <script src="src/api-client.jsx"></script>
+<script type="text/babel" src="src/sessions.jsx"></script>
 
 <script type="text/babel" src="src/admin/data.jsx"></script>
 <script type="text/babel" src="src/admin/charts.jsx"></script>
@@ -40,6 +41,7 @@ function App() {
   const { OverviewView, ProductivityView, FinanceView, GovernanceView, ReportsView } = window.AdminViews;
   const { Toast } = window.FSICheckinDesignSystem_019df8;
 
+  const nv = window.VAApi.getUser();
   const [authed] = useState(window.VAApi.isAuthed());
   const persons = ["Tất cả nhân sự", ...D.tknv.map((t) => t.name), ...D.ccv.map((c) => c.name)];
   const [page, setPage] = useState("overview");
@@ -66,7 +68,7 @@ function App() {
     <div style={{ display: "flex", height: "100%", background: "var(--bg-base)" }}>
       <AdminSidebar active={page} onNav={setPage} />
       <div style={{ flex: 1, display: "flex", flexDirection: "column", minWidth: 0, minHeight: 0 }}>
-        <AdminTopbar active={page} onLogout={goPortal} />
+        <AdminTopbar active={page} onLogout={goPortal} nv={nv} />
         {showFilter && <FilterBar range={range} onRange={setRange} person={person} onPerson={setPerson} type={type} onType={setType} persons={persons} onExport={exportRpt} />}
         <main style={{ flex: 1, minHeight: 0, overflowY: "auto", padding: 20 }}>
           <div style={{ maxWidth: 1200, margin: "0 auto" }}>{view}</div>

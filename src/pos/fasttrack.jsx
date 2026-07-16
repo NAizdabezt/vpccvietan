@@ -116,10 +116,10 @@ function FastTrackModal({ onClose }) {
   const blank = () => ({ id: Date.now() + Math.random(), mode: "saoy", qty: 1, soSaoY: "", ctType: D.chungThucTypes[0], ctAmount: 50000, soCC: "" });
   const [name, setName] = useStateF("");
   const [pay, setPay] = useStateF("cash");
-  const [rows, setRows] = useStateF([
-    { id: 1, mode: "saoy", qty: 8, soSaoY: "", ctType: D.chungThucTypes[0], ctAmount: 50000, soCC: "" },
-    { id: 2, mode: "chungthuc", qty: 1, soSaoY: "", ctType: "Sơ yếu lý lịch", ctAmount: 50000, soCC: "" },
-  ]);
+  const [rows, setRows] = useStateF([blank()]);
+  const [busy, setBusy] = useStateF(false);
+  const [err, setErr] = useStateF("");
+  const [result, setResult] = useStateF(null);
 
   const lineTotal = (r) => r.mode === "saoy" ? (r.qty || 0) * D.saoYPrice : (r.ctAmount || 0);
   const total = rows.reduce((s, r) => s + lineTotal(r), 0);
@@ -128,8 +128,51 @@ function FastTrackModal({ onClose }) {
   const addRow = () => setRows([...rows, blank()]);
   const delRow = (id) => setRows(rows.filter((r) => r.id !== id));
 
+  // Trước đây nút này chỉ đóng modal, không gọi API nào — giờ tạo hồ sơ thật
+  // (SAO_Y/CHUNG_THUC) + cấp số thật cho từng dòng, qua route /fast-track
+  // (Thu ngân, không cần quyền TKNV vốn chỉ dành cho soạn thảo thường).
+  const submit = async () => {
+    setBusy(true);
+    setErr("");
+    try {
+      const res = await window.VAApi.hoSo.fastTrack({
+        khachTen: name,
+        phuongThucThanhToan: pay,
+        rows: rows.map((r) => ({ mode: r.mode, amount: lineTotal(r) })),
+      });
+      window.VAStore.refresh();
+      setResult(res.results);
+    } catch (e) {
+      setErr(e.message || "Không tạo được dịch vụ nhanh");
+    }
+    setBusy(false);
+  };
+
   const cellInput = { border: "1px solid var(--border-default)", borderRadius: "var(--radius-md)", padding: "9px 11px", fontSize: 13.5, background: "var(--bg-surface)", outline: "none", fontFamily: "var(--font-sans)", width: "100%", color: "var(--text-primary)" };
   const lbl = { fontSize: 10.5, fontWeight: 600, textTransform: "uppercase", letterSpacing: ".04em", color: "var(--text-tertiary)", marginBottom: 6, display: "block" };
+
+  if (result) {
+    return (
+      <div style={{ position: "fixed", inset: 0, zIndex: 70, display: "flex", alignItems: "center", justifyContent: "center", padding: 24 }}>
+        <div onClick={onClose} style={{ position: "absolute", inset: 0, background: "rgba(28,28,26,.42)" }} />
+        <div style={{ position: "relative", width: 460, maxWidth: "100%", background: "var(--bg-surface)", borderRadius: "var(--radius-xl)", boxShadow: "var(--shadow-xl)", overflow: "hidden" }}>
+          <div style={{ display: "flex", alignItems: "center", gap: 10, padding: "14px 18px", borderBottom: "1px solid var(--border-default)" }}>
+            <div style={{ width: 32, height: 32, borderRadius: 8, background: "var(--bg-success)", display: "grid", placeItems: "center" }}><L.CheckCircle2 size={17} color="var(--text-success)" /></div>
+            <div style={{ fontSize: 14.5, fontWeight: 600 }}>Đã cấp số & thu phí</div>
+          </div>
+          <div style={{ padding: 18, display: "flex", flexDirection: "column", gap: 10 }}>
+            {result.map((r) => (
+              <div key={r.hoSo.id} style={{ display: "flex", alignItems: "center", justifyContent: "space-between", fontSize: 13, padding: "8px 12px", background: "var(--bg-overlay)", borderRadius: "var(--radius-md)" }}>
+                <span style={{ fontFamily: "var(--font-mono)", fontWeight: 600 }}>{r.soCc}</span>
+                <span style={{ color: "var(--text-tertiary)" }}>{fmtVND(Number(r.hoSo.phiDichVu))}</span>
+              </div>
+            ))}
+            <Button variant="primary" fullWidth onClick={onClose}>Xong</Button>
+          </div>
+        </div>
+      </div>
+    );
+  }
 
   return (
     <div style={{ position: "fixed", inset: 0, zIndex: 70, display: "flex", alignItems: "center", justifyContent: "center", padding: 24 }}>
@@ -170,6 +213,12 @@ function FastTrackModal({ onClose }) {
             <label style={lbl}>Hình thức thu</label>
             <SegPayFast value={pay} onChange={setPay} />
           </div>
+
+          {err && (
+            <div style={{ marginTop: 14, display: "flex", alignItems: "center", gap: 8, fontSize: 12.5, fontWeight: 500, color: "var(--text-danger)", padding: "9px 12px", borderRadius: "var(--radius-md)", background: "var(--bg-danger)", border: "1px solid var(--border-danger)" }}>
+              <L.AlertTriangle size={14} /> {err}
+            </div>
+          )}
         </div>
 
         {/* Footer */}
@@ -179,8 +228,8 @@ function FastTrackModal({ onClose }) {
             <span style={{ fontSize: 12.5, color: "var(--text-tertiary)" }}>Tổng thu</span>
             <span style={{ fontSize: 20, fontWeight: 700, fontFamily: "var(--font-mono)" }}>{fmtVND(total)}</span>
           </div>
-          <Button variant="ghost" onClick={onClose}>Đóng</Button>
-          <Button variant="primary" icon={L.Printer} onClick={onClose}>Cấp số & In phơi</Button>
+          <Button variant="ghost" onClick={onClose} disabled={busy}>Đóng</Button>
+          <Button variant="primary" icon={busy ? L.Loader : L.Printer} disabled={busy || total <= 0} onClick={submit}>{busy ? "Đang xử lý…" : "Cấp số & In phơi"}</Button>
         </div>
       </div>
     </div>

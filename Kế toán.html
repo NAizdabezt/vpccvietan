@@ -73,7 +73,7 @@ function App() {
     <div style={{ position: "relative", display: "flex", height: "100%", background: "var(--bg-base)" }}>
       <PosSidebar active={page} onNav={setPage} role={role} />
       <div style={{ flex: 1, display: "flex", flexDirection: "column", minWidth: 0, minHeight: 0 }}>
-        <PosTopbar active={page} role={role} onLogout={goPortal} />
+        <PosTopbar active={page} role={role} onLogout={goPortal} nv={nv} />
         <main style={{ flex: 1, minHeight: 0, display: "flex", flexDirection: "column", overflow: "hidden" }}>
           {content}
         </main>

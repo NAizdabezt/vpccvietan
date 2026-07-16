@@ -1,144 +1,89 @@
 /* global React, window, document */
-/* Trình soạn thảo hợp đồng — OCR tự động điền vào ô dữ liệu, cho sửa & kéo-thả qua lại */
+/* Trình soạn thảo hợp đồng — nhúng Quill (rich-text thật, soạn thảo tự do như
+   Word) + OCR tự động điền vào ô dữ liệu (span "va-field", kéo-thả được).
+   Bản mẫu (blocksFor/blocksToHtml — src/templates-data.jsx) chỉ sinh HTML KHỞI
+   TẠO 1 lần khi mở tab; sau đó nội dung sống trong Quill, không đọc lại mẫu nữa. */
 const { useState: useEd, useRef: useRefEd, useEffect: useEffEd } = React;
 
-function EditorToolbar() {
-  const L = window.LucideReact;
-  const groups = [["Undo2", "Redo2"], ["Bold", "Italic", "Underline"], ["List", "ListOrdered"], ["AlignLeft", "AlignCenter", "AlignJustify"]];
-  const Btn = ({ icon }) => {
-    const Icon = L[icon];
-    return (
-      <button type="button" style={{ width: 28, height: 28, display: "grid", placeItems: "center", border: "none", background: "transparent", borderRadius: 6, color: "var(--text-secondary)", cursor: "pointer" }}
-        onMouseEnter={(e) => (e.currentTarget.style.background = "var(--bg-overlay)")} onMouseLeave={(e) => (e.currentTarget.style.background = "transparent")}>
-        <Icon size={15} />
-      </button>
-    );
-  };
-  return (
-    <div style={{ display: "flex", alignItems: "center", gap: 4, padding: "6px 10px", borderBottom: "1px solid var(--border-subtle)", background: "var(--bg-elevated)", flexWrap: "wrap" }}>
-      <select style={{ height: 28, border: "1px solid var(--border-default)", borderRadius: 6, background: "var(--bg-surface)", fontSize: 12.5, color: "var(--text-secondary)", padding: "0 6px", fontFamily: "var(--font-sans)" }}>
-        <option>Times New Roman · 13pt</option>
-      </select>
-      {groups.map((g, i) => (
-        <React.Fragment key={i}>
-          <span style={{ width: 1, height: 18, background: "var(--border-subtle)", margin: "0 2px" }} />
-          {g.map((ic) => <Btn key={ic} icon={ic} />)}
-        </React.Fragment>
-      ))}
-    </div>
-  );
-}
-
-/* ====== Ô dữ liệu (field cell): sửa trực tiếp · kéo-thả vào · kéo-thả qua lại ====== */
-function FieldCell({ fkey, label, cell, mono, readOnly, onEdit, onClear, onCellDrop, dragStartCell }) {
-  const L = window.LucideReact;
-  const value = cell ? cell.value : "";
-  const origin = cell ? cell.origin : null;
-  const filled = !!value;
-  const [editing, setEditing] = useEd(false);
-  const [draft, setDraft] = useEd("");
-  const [over, setOver] = useEd(false);
-  const inputRef = useRefEd(null);
-
-  useEffEd(() => { if (editing && inputRef.current) { inputRef.current.focus(); inputRef.current.select(); } }, [editing]);
-
-  const begin = () => { if (readOnly) return; setDraft(value); setEditing(true); };
-  const commit = () => { setEditing(false); onEdit(draft); };
-
-  const dropProps = readOnly ? {} : {
-    onDragOver: (e) => { e.preventDefault(); if (!over) setOver(true); },
-    onDragLeave: () => setOver(false),
-    onDrop: (e) => { e.preventDefault(); setOver(false); onCellDrop(e); },
-  };
-
-  if (editing) {
-    return (
-      <input ref={inputRef} value={draft} onChange={(e) => setDraft(e.target.value)} onBlur={commit}
-        onKeyDown={(e) => { if (e.key === "Enter") { e.preventDefault(); commit(); } if (e.key === "Escape") setEditing(false); }}
-        style={{ font: "inherit", fontFamily: mono ? "var(--font-mono)" : "inherit", minWidth: 44, width: Math.max(6, (draft.length || label.length)) + "ch", padding: "0 5px", border: "1.5px solid var(--accent)", borderRadius: 4, background: "#fff", outline: "none", verticalAlign: "baseline" }} />
-    );
+/* Đăng ký định dạng "va-field" với Quill (1 lần, trước khi tạo instance nào) —
+   BẮT BUỘC, vì Quill chỉ giữ lại wrapper <span> khi parse HTML nếu nó khớp một
+   Blot đã đăng ký; span tùy ý không đăng ký sẽ bị Quill bóc bỏ, chỉ còn lại chữ. */
+(function registerFieldBlot() {
+  if (window.__vaFieldBlotRegistered || !window.Quill) return;
+  const Inline = window.Quill.import("blots/inline");
+  class FieldBlot extends Inline {
+    static create(value) {
+      const node = super.create();
+      if (value && value.fkey) node.setAttribute("data-fkey", value.fkey);
+      node.setAttribute("data-origin", (value && value.origin) || "empty");
+      // data-label: chỉ cần cho trường TỰ ĐẶT khi soạn nội dung biểu mẫu (chưa có
+      // trong VA_FIELD_LABELS) — trường chuẩn đã có nhãn tra theo fkey, không cần lưu thêm.
+      if (value && value.label) node.setAttribute("data-label", value.label);
+      return node;
+    }
+    static formats(node) {
+      const f = { fkey: node.getAttribute("data-fkey"), origin: node.getAttribute("data-origin") };
+      const label = node.getAttribute("data-label");
+      if (label) f.label = label;
+      return f;
+    }
   }
+  FieldBlot.blotName = "vafield";
+  FieldBlot.tagName = "span";
+  FieldBlot.className = "va-field";
+  window.Quill.register(FieldBlot, true);
+  window.__vaFieldBlotRegistered = true;
+})();
 
-  const base = { display: "inline", borderRadius: 4, padding: "1px 5px", whiteSpace: "pre-wrap", verticalAlign: "baseline", transition: "background .1s, box-shadow .1s" };
+/* ====== Nhúng 1 instance Quill quanh 1 <div> — mount 1 lần/tab, giữ nguyên khi đổi tab ====== */
+function RichTextEditor({ html, readOnly, compact, onReady, onChange }) {
+  const mountRef = useRefEd(null);
+  const quillRef = useRefEd(null);
 
-  if (!filled) {
-    return (
-      <span {...dropProps} onClick={begin} title="Bấm để nhập — hoặc kéo-thả dữ liệu OCR vào đây"
-        style={{ ...base, color: "var(--text-tertiary)", fontStyle: "italic", cursor: readOnly ? "default" : "text",
-          background: over ? "var(--accent-muted)" : "transparent",
-          boxShadow: "inset 0 0 0 1px " + (over ? "var(--accent)" : "var(--border-strong)") }}>
-        ‹{label}›
-      </span>
-    );
-  }
+  useEffEd(() => {
+    const quill = new window.Quill(mountRef.current, {
+      theme: "snow",
+      readOnly: !!readOnly,
+      modules: {
+        toolbar: [
+          [{ header: [false, 2, 3] }],
+          ["bold", "italic", "underline", "strike"],
+          [{ list: "ordered" }, { list: "bullet" }],
+          [{ align: [] }],
+          ["clean"],
+        ],
+        history: { delay: 500, maxStack: 200, userOnly: true },
+      },
+    });
+    quill.root.innerHTML = html;
+    quill.root.style.padding = compact ? "30px 34px" : "44px 50px";
+    quillRef.current = quill;
 
-  const tone = origin === "auto"
-    ? { bg: "var(--bg-success)", fg: "var(--text-primary)", bd: "var(--border-success)" }
-    : { bg: "var(--accent-muted)", fg: "var(--accent-hover)", bd: "var(--accent-border)" };
+    // Đánh dấu 1 ô "va-field" thành đã sửa tay ngay khi người dùng gõ vào trong nó —
+    // từ lúc đó ô không còn bị "Điền lại từ OCR" ghi đè nữa (giống mail-merge thật).
+    const markManualAtSelection = () => {
+      const sel = quill.getSelection();
+      if (!sel) return;
+      const [leaf] = quill.getLeaf(sel.index);
+      const node = leaf && leaf.domNode;
+      if (!node) return;
+      const el = node.nodeType === 1 ? node.closest(".va-field") : node.parentElement && node.parentElement.closest(".va-field");
+      if (el && el.dataset.origin !== "manual") el.dataset.origin = "manual";
+    };
+    const onTextChange = (delta, oldDelta, source) => {
+      if (source === "user") markManualAtSelection();
+      onChange && onChange();
+    };
+    quill.on("text-change", onTextChange);
 
-  return (
-    <span {...dropProps}
-      draggable={!readOnly}
-      onDragStart={(e) => { if (readOnly) return; e.dataTransfer.effectAllowed = "move"; e.dataTransfer.setData("va/cell", JSON.stringify({ key: fkey })); e.dataTransfer.setData("text/plain", value); dragStartCell && dragStartCell(); }}
-      style={{ ...base, fontFamily: mono ? "var(--font-mono)" : "inherit", fontWeight: 600,
-        color: tone.fg, background: over ? "var(--accent-muted)" : tone.bg,
-        boxShadow: "inset 0 0 0 1px " + (over ? "var(--accent)" : tone.bd),
-        cursor: readOnly ? "default" : "grab" }}
-      title={readOnly ? value : label + " — kéo để chuyển sang ô khác, bấm để sửa"}>
-      <span onClick={begin} style={{ cursor: readOnly ? "default" : "text" }}>{value}</span>
-      {!readOnly && (
-        <button type="button" onMouseDown={(e) => e.preventDefault()} onClick={onClear} title="Xóa giá trị"
-          style={{ border: "none", background: "transparent", cursor: "pointer", padding: "0 0 0 4px", lineHeight: 0, color: "inherit", opacity: .5, verticalAlign: "middle" }}>
-          <L.X size={11} />
-        </button>
-      )}
-    </span>
-  );
-}
+    if (onReady) onReady(quill);
+    return () => { quill.off("text-change", onTextChange); };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
 
-const BLOCK_STYLE = {
-  dt: { textAlign: "center", fontWeight: 700, textTransform: "uppercase", margin: "0 0 4px" },
-  dm: { textAlign: "center", fontStyle: "italic", color: "#7a7a72", margin: "0 0 18px" },
-  dh: { fontWeight: 700, margin: "18px 0 4px" },
-  p: { margin: "0 0 8px" },
-  ds: { fontStyle: "italic", margin: "18px 0 0", color: "#5b5b54" },
-};
+  useEffEd(() => { if (quillRef.current) quillRef.current.enable(!readOnly); }, [readOnly]);
 
-function DraftPage({ tpl, active, compact, readOnly, drafter, tabVals, onEditCell, onClearCell, onDropCell }) {
-  const M = window.VATemplateModel;
-  const blocks = M.blocksFor(tpl);
-  const ident = (drafter && drafter.ident) || "";
-
-  const renderParts = (parts) => parts.map((p, i) => {
-    if (typeof p === "string") return <React.Fragment key={i}>{p}</React.Fragment>;
-    const cell = tabVals[p.f];
-    return (
-      <FieldCell key={i} fkey={p.f} label={p.label} cell={cell} mono={cell && cell.mono} readOnly={readOnly}
-        onEdit={(v) => onEditCell(p.f, v)} onClear={() => onClearCell(p.f)}
-        onCellDrop={(e) => onDropCell(p.f, e)} />
-    );
-  });
-
-  return (
-    <div style={{ display: active ? "block" : "none", flex: 1, overflowY: "auto", background: "var(--bg-overlay)", padding: compact ? 14 : 22, minHeight: 0 }}>
-      <div className="va-a4" style={{
-        maxWidth: 660, margin: "0 auto", background: "#fff", border: "1px solid var(--border-subtle)",
-        boxShadow: "var(--shadow-sm)", padding: compact ? "30px 34px" : "44px 50px",
-        fontFamily: "'Times New Roman', Times, serif", color: "var(--text-primary)", minHeight: 600,
-        fontSize: 14.5, lineHeight: 2,
-      }}>
-        {blocks.map((b, bi) => {
-          const st = BLOCK_STYLE[b.tag] || BLOCK_STYLE.p;
-          if (b.tag === "dt") return <h2 key={bi} style={{ ...st, fontSize: compact ? 16 : 18, lineHeight: 1.3 }}>{renderParts(b.parts)}</h2>;
-          return <p key={bi} style={st}>{renderParts(b.parts)}</p>;
-        })}
-        <div title="Ký tự định danh người soạn" style={{ marginTop: 26, paddingTop: 10, borderTop: "1px solid #e7e7e3", display: "flex", justifyContent: "flex-end", alignItems: "baseline", gap: 6, fontSize: 11.5, color: "#9a9a93" }}>
-          <span>Người soạn:</span>
-          <span style={{ fontWeight: 700, letterSpacing: ".12em", color: "#5b5b54" }}>{ident || "—"}</span>
-        </div>
-      </div>
-    </div>
-  );
+  return <div ref={mountRef} />;
 }
 
 /* Cột trái: trường OCR — kéo-thả hoặc bấm để điền vào ô khớp */
@@ -147,7 +92,7 @@ function FieldRail({ ocrDocs, onInsertField, activeKeys }) {
   return (
     <div style={{ display: "flex", flexDirection: "column", gap: 10 }}>
       <div style={{ display: "flex", alignItems: "flex-start", gap: 6, fontSize: 11.5, color: "var(--text-tertiary)", lineHeight: 1.4 }}>
-        <L.MousePointerClick size={13} style={{ marginTop: 1, flexShrink: 0 }} /> Kéo-thả vào ô bất kỳ, hoặc bấm để điền vào ô khớp.
+        <L.MousePointerClick size={13} style={{ marginTop: 1, flexShrink: 0 }} /> Kéo-thả vào ô trống hoặc bất kỳ vị trí nào trong văn bản, hoặc bấm để điền vào ô khớp.
       </div>
       {ocrDocs.map((doc) => {
         const Icon = L[doc.icon] || L.File;
@@ -164,7 +109,7 @@ function FieldRail({ ocrDocs, onInsertField, activeKeys }) {
                   <button key={fi} type="button" draggable
                     onDragStart={(e) => { e.dataTransfer.effectAllowed = "copy"; e.dataTransfer.setData("text/plain", f.value); e.dataTransfer.setData("va/ocr", JSON.stringify({ fkey: f.fkey, value: f.value, mono: !!f.mono })); }}
                     onClick={() => onInsertField(f)}
-                    title={f.label + ": " + f.value + (used ? " · bấm để điền vào ô tương ứng" : " · kéo-thả vào ô bất kỳ")}
+                    title={f.label + ": " + f.value + (used ? " · bấm để điền vào ô tương ứng" : " · kéo-thả vào văn bản")}
                     style={{
                       display: "inline-flex", alignItems: "center", gap: 5, maxWidth: "100%", cursor: "grab",
                       border: "1px solid " + (used ? "var(--accent-border)" : "var(--border-default)"),
@@ -186,86 +131,145 @@ function FieldRail({ ocrDocs, onInsertField, activeKeys }) {
   );
 }
 
-function DraftWorkspace({ tabs, ocrDocs, compact, onAddTemplate, addOptions, readOnly, drafter }) {
+function DraftPage({ tpl, active, compact, readOnly, drafter, initialHtml, onReady, onChange }) {
+  const M = window.VATemplateModel;
+  const htmlRef = useRefEd(null);
+  // Ưu tiên nội dung đã soạn LƯU CHO HỒ SƠ NÀY (initialHtml, từ HoSo.noiDungDaSoan)
+  // — khác tầng với M.htmlOf(tpl) (nội dung MẪU dùng chung, không gắn hồ sơ cụ thể).
+  if (htmlRef.current === null) htmlRef.current = initialHtml || M.htmlOf(tpl);
+  const ident = (drafter && drafter.ident) || "";
+
+  return (
+    <div style={{ display: active ? "block" : "none", flex: 1, overflowY: "auto", background: "var(--bg-overlay)", padding: compact ? 14 : 22, minHeight: 0 }}>
+      <div className="va-quill-page">
+        <RichTextEditor html={htmlRef.current} readOnly={readOnly} compact={compact}
+          onReady={(quill) => onReady(tpl.id, quill)} onChange={() => onChange(tpl.id)} />
+        <div title="Ký tự định danh người soạn" style={{ padding: (compact ? "10px 34px 22px" : "10px 50px 26px"), borderTop: "1px solid #e7e7e3", display: "flex", justifyContent: "flex-end", alignItems: "baseline", gap: 6, fontSize: 11.5, color: "#9a9a93" }}>
+          <span>Người soạn:</span>
+          <span style={{ fontWeight: 700, letterSpacing: ".12em", color: "#5b5b54" }}>{ident || "—"}</span>
+        </div>
+      </div>
+    </div>
+  );
+}
+
+/* Điền các ô "va-field" còn trống (data-origin="empty") khớp với autoMap — không
+   bao giờ đè ô người dùng đã gõ tay (data-origin="manual"). */
+function fillEmptyFields(quill, autoMap) {
+  if (!quill) return;
+  const spans = quill.root.querySelectorAll('.va-field[data-origin="empty"], .va-field[data-origin="auto"]');
+  spans.forEach((el) => {
+    const fkey = el.getAttribute("data-fkey");
+    const am = autoMap[fkey];
+    if (am && el.textContent !== am.value) {
+      el.textContent = am.value;
+      el.dataset.origin = "auto";
+    }
+  });
+}
+
+function DraftWorkspace({ tabs, ocrDocs, compact, onAddTemplate, addOptions, readOnly, drafter, savedHtml, onContentChange }) {
   const L = window.LucideReact;
   const M = window.VATemplateModel;
-  const { Button } = window.FSICheckinDesignSystem_019df8;
   const [active, setActive] = useEd(tabs[0] ? tabs[0].id : null);
   const [menu, setMenu] = useEd(false);
-  const [vals, setVals] = useEd({}); // { [tabId]: { [fkey]: {value, origin, mono} } }
+  const [tick, setTick] = useEd(0);
+  const quillRefs = useRefEd({});
 
   const autoMap = M.buildAutoMap(ocrDocs);
   const autoSig = JSON.stringify(autoMap);
   const tabsSig = tabs.map((t) => t.id).join(",");
 
-  // Tự động điền: chỉ điền ô đang trống hoặc ô do auto điền trước đó (không đè giá trị người dùng đã sửa)
-  useEffEd(() => {
-    setVals((prev) => {
-      const next = { ...prev };
-      tabs.forEach((tab) => {
-        const keys = M.fieldKeysOf(tab);
-        const cur = { ...(next[tab.id] || {}) };
-        keys.forEach((k) => {
-          const am = autoMap[k];
-          if (am && (!cur[k] || cur[k].origin === "auto")) cur[k] = { value: am.value, mono: am.mono, origin: "auto" };
-        });
-        next[tab.id] = cur;
-      });
-      return next;
-    });
-  }, [autoSig, tabsSig]);
-
   React.useEffect(() => { if (!tabs.find((t) => t.id === active) && tabs[0]) setActive(tabs[0].id); }, [tabsSig]);
 
-  const setVal = (tabId, fkey, value, origin, mono) => setVals((prev) => {
-    const t = { ...(prev[tabId] || {}) };
-    if (value) t[fkey] = { value, origin: origin || "manual", mono: mono != null ? mono : (t[fkey] && t[fkey].mono) };
-    else delete t[fkey];
-    return { ...prev, [tabId]: t };
-  });
+  // OCR cập nhật (hoặc có tab mới) -> điền lại các ô còn trống ở MỌI tab đã mount
+  useEffEd(() => {
+    Object.values(quillRefs.current).forEach((q) => fillEmptyFields(q, autoMap));
+    setTick((t) => t + 1);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [autoSig, tabsSig]);
 
-  const swapCells = (tabId, srcKey, dstKey) => setVals((prev) => {
-    const t = { ...(prev[tabId] || {}) };
-    const a = t[srcKey], b = t[dstKey];
-    if (a) t[dstKey] = { ...a, origin: "manual" }; else delete t[dstKey];
-    if (b) t[srcKey] = { ...b, origin: "manual" }; else delete t[srcKey];
-    return { ...prev, [tabId]: t };
-  });
-
-  const onEditCell = (fkey, v) => setVal(active, fkey, v.trim(), "manual");
-  const onClearCell = (fkey) => setVal(active, fkey, "");
-  const onDropCell = (dstKey, e) => {
-    const cellRaw = e.dataTransfer.getData("va/cell");
-    if (cellRaw) { try { const { key } = JSON.parse(cellRaw); if (key && key !== dstKey) swapCells(active, key, dstKey); } catch (err) { /* */ } return; }
-    const ocrRaw = e.dataTransfer.getData("va/ocr");
-    if (ocrRaw) { try { const o = JSON.parse(ocrRaw); setVal(active, dstKey, o.value, "manual", o.mono); return; } catch (err) { /* */ } }
-    const txt = e.dataTransfer.getData("text/plain");
-    if (txt) setVal(active, dstKey, txt, "manual");
+  const onTabReady = (tabId, quill) => {
+    quillRefs.current[tabId] = quill;
+    fillEmptyFields(quill, autoMap);
+    setTick((t) => t + 1);
+    if (onContentChange) onContentChange(tabId, quill.root.innerHTML);
+  };
+  // Đẩy nội dung mới nhất lên FlowA mỗi khi Quill đổi — chỉ giữ trong state ở
+  // FlowA (rẻ), KHÔNG gọi API ở đây; việc lưu backend chỉ chạy ở các mốc rõ ràng
+  // ("Lưu nháp", trước khi in) để tránh gọi API mỗi lần gõ phím.
+  const onTabChange = (tabId) => {
+    setTick((t) => t + 1);
+    const q = quillRefs.current[tabId];
+    if (onContentChange && q) onContentChange(tabId, q.root.innerHTML);
   };
 
-  const activeTab = tabs.find((t) => t.id === active) || tabs[0];
-  const activeKeys = activeTab ? M.fieldKeysOf(activeTab) : [];
-  const tabVals = vals[active] || {};
+  const activeQuill = quillRefs.current[active];
+
+  // Kéo-thả / bấm từ cột trái vào đúng vị trí trong Quill của tab đang mở
+  const insertValueAtDrop = (quill, value, clientX, clientY) => {
+    const targetEl = document.elementFromPoint(clientX, clientY);
+    const fieldEl = targetEl && targetEl.closest && targetEl.closest(".va-field");
+    if (fieldEl && fieldEl.dataset.origin !== "manual") {
+      fieldEl.textContent = value;
+      fieldEl.dataset.origin = "manual";
+      onTabChange();
+      return;
+    }
+    let range = null;
+    if (document.caretRangeFromPoint) range = document.caretRangeFromPoint(clientX, clientY);
+    else if (document.caretPositionFromPoint) {
+      const pos = document.caretPositionFromPoint(clientX, clientY);
+      if (pos) { range = document.createRange(); range.setStart(pos.offsetNode, pos.offset); }
+    }
+    if (range && quill.root.contains(range.startContainer)) {
+      range.collapse(true);
+      range.insertNode(document.createTextNode(value));
+    }
+    onTabChange();
+  };
+
+  React.useEffect(() => {
+    const quill = activeQuill;
+    if (!quill || readOnly) return undefined;
+    const root = quill.root;
+    const onDragOver = (e) => e.preventDefault();
+    const onDrop = (e) => {
+      e.preventDefault();
+      const ocrRaw = e.dataTransfer.getData("va/ocr");
+      let payload = null;
+      try { payload = ocrRaw ? JSON.parse(ocrRaw) : null; } catch (err) { /* ignore */ }
+      const value = payload ? payload.value : e.dataTransfer.getData("text/plain");
+      if (value) insertValueAtDrop(quill, value, e.clientX, e.clientY);
+    };
+    root.addEventListener("dragover", onDragOver);
+    root.addEventListener("drop", onDrop);
+    return () => { root.removeEventListener("dragover", onDragOver); root.removeEventListener("drop", onDrop); };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [activeQuill, readOnly]);
+
+  const activeKeys = activeQuill
+    ? Array.from(activeQuill.root.querySelectorAll(".va-field")).map((el) => el.getAttribute("data-fkey"))
+    : [];
 
   const insertField = (f) => {
-    if (readOnly || !activeTab) return;
-    if (f.fkey && activeKeys.includes(f.fkey)) { setVal(active, f.fkey, f.value, "manual", f.mono); return; }
-    const emptyKey = activeKeys.find((k) => !(tabVals[k] && tabVals[k].value));
-    if (emptyKey) setVal(active, emptyKey, f.value, "manual", f.mono);
+    if (readOnly || !activeQuill) return;
+    const root = activeQuill.root;
+    const exact = f.fkey && root.querySelector(`.va-field[data-fkey="${f.fkey}"]`);
+    const target = (exact && exact.dataset.origin !== "manual") ? exact : root.querySelector('.va-field[data-origin="empty"]');
+    if (target) { target.textContent = f.value; target.dataset.origin = "manual"; onTabChange(); }
   };
 
-  const reapplyAuto = () => {
-    if (readOnly || !activeTab) return;
-    setVals((prev) => {
-      const cur = { ...(prev[active] || {}) };
-      activeKeys.forEach((k) => { if (autoMap[k]) cur[k] = { value: autoMap[k].value, mono: autoMap[k].mono, origin: "auto" }; });
-      return { ...prev, [active]: cur };
+  const reapplyAuto = () => { if (!readOnly && activeQuill) { fillEmptyFields(activeQuill, autoMap); onTabChange(); } };
+
+  let totalFields = 0, filledCount = 0, autoCount = 0;
+  if (activeQuill) {
+    activeQuill.root.querySelectorAll(".va-field").forEach((el) => {
+      totalFields++;
+      if (el.dataset.origin !== "empty") filledCount++;
+      if (el.dataset.origin === "auto") autoCount++;
     });
-  };
-
-  const totalFields = activeKeys.length;
-  const filledCount = activeKeys.filter((k) => tabVals[k] && tabVals[k].value).length;
-  const autoCount = activeKeys.filter((k) => tabVals[k] && tabVals[k].origin === "auto" && tabVals[k].value).length;
+  }
 
   return (
     <div style={{ display: "grid", gridTemplateColumns: "260px 1fr", gap: 16, alignItems: "stretch", minHeight: 0 }}>
@@ -310,7 +314,6 @@ function DraftWorkspace({ tabs, ocrDocs, compact, onAddTemplate, addOptions, rea
             )}
           </div>
         </div>
-        <EditorToolbar />
         {/* Thanh trạng thái tự động điền */}
         <div style={{ display: "flex", alignItems: "center", gap: 10, padding: "8px 14px", background: autoCount ? "var(--bg-success)" : "var(--bg-elevated)", borderBottom: "1px solid var(--border-subtle)", fontSize: 12.5 }}>
           {autoCount ? <L.Sparkles size={15} color="var(--text-success)" /> : <L.Info size={15} color="var(--text-tertiary)" />}
@@ -328,11 +331,11 @@ function DraftWorkspace({ tabs, ocrDocs, compact, onAddTemplate, addOptions, rea
         </div>
         {tabs.map((t) => (
           <DraftPage key={t.id} tpl={t} active={t.id === active} compact={compact} readOnly={readOnly} drafter={drafter}
-            tabVals={vals[t.id] || {}} onEditCell={onEditCell} onClearCell={onClearCell} onDropCell={onDropCell} />
+            initialHtml={savedHtml && savedHtml[t.id]} onReady={onTabReady} onChange={onTabChange} />
         ))}
       </div>
     </div>
   );
 }
 
-window.VAEditor = { DraftWorkspace, EditorToolbar };
+window.VAEditor = { DraftWorkspace, RichTextEditor };

@@ -55,10 +55,10 @@ function SaSidebar({ active, onNav }) {
   );
 }
 
-function SaTopbar({ active, onLogout }) {
-  const { IconButton, Avatar } = window.FSICheckinDesignSystem_019df8;
-  const { Bell, ChevronDown } = window.LucideReact;
+function SaTopbar({ active, onLogout, nv }) {
+  const { ProfileButton, profileForNv } = window.VASessions;
   const D = window.SA_DATA;
+  const profile = profileForNv(nv) || D.admin;
   return (
     <header style={{ height: "var(--topbar-height)", flexShrink: 0, display: "flex", alignItems: "center", justifyContent: "space-between", padding: "0 20px", borderBottom: "1px solid var(--border-subtle)", background: "var(--bg-base)" }}>
       <div style={{ fontSize: 14 }}>
@@ -68,16 +68,8 @@ function SaTopbar({ active, onLogout }) {
       </div>
       <div style={{ display: "flex", alignItems: "center", gap: 14 }}>
         <span style={{ display: "inline-flex", alignItems: "center", gap: 6, fontSize: 12, fontWeight: 600, padding: "4px 10px", borderRadius: "var(--radius-full)", background: "var(--accent-muted)", color: "var(--accent-hover)" }}>Quản trị viên</span>
-        <IconButton icon={Bell} badge={3} aria-label="Thông báo" />
-        <div onClick={onLogout} title="Đăng xuất" style={{ display: "flex", alignItems: "center", gap: 8, padding: "4px 6px", borderRadius: "var(--radius-md)", cursor: "pointer" }}
-          onMouseEnter={(e) => (e.currentTarget.style.background = "var(--bg-overlay)")} onMouseLeave={(e) => (e.currentTarget.style.background = "transparent")}>
-          <Avatar name={D.admin.name} size={26} />
-          <div style={{ lineHeight: 1.15, whiteSpace: "nowrap" }}>
-            <div style={{ fontSize: 12.5, fontWeight: 500 }}>{D.admin.name}</div>
-            <div style={{ fontSize: 10.5, color: "var(--text-tertiary)" }}>{D.admin.role}</div>
-          </div>
-          <ChevronDown size={14} color="var(--text-tertiary)" />
-        </div>
+        <window.VASessions.NotificationBell />
+        <ProfileButton profile={profile} onLogout={onLogout} />
       </div>
     </header>
   );

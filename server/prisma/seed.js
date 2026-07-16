@@ -64,12 +64,24 @@ async function main() {
   // Biểu mẫu hợp đồng chuẩn — thay cho VA_FEE_BY_TYPE trong sessions.jsx (mock cũ).
   // HoSo nối n-n tới đây để biết (những) loại hợp đồng cụ thể, vì loai_ho_so chỉ có
   // 3 giá trị thô, không đủ chi tiết (xem ghi chú trong schema.prisma).
+  // "HĐ Mua bán xe" / "Văn bản ủy quyền" (bản giả lập cũ) đã được thay bằng các mẫu
+  // thật bên dưới (2025-07 — mẫu hồ sơ công chứng mới áp dụng từ 1-7-2025).
+  const BIEU_MAU_XOA = ["HĐ Mua bán xe", "Văn bản ủy quyền"];
+  await prisma.bieuMau.deleteMany({ where: { ten: { in: BIEU_MAU_XOA }, builtin: true } });
+
   const BIEU_MAU = [
     { ten: "HĐ Chuyển nhượng QSDĐ", nhom: "Đất đai", phiMacDinh: 3200000, builtin: true },
     { ten: "HĐ Tặng cho QSDĐ", nhom: "Đất đai", phiMacDinh: 2800000, builtin: true },
     { ten: "HĐ Thế chấp QSDĐ", nhom: "Đất đai", phiMacDinh: 4500000, builtin: true },
-    { ten: "HĐ Mua bán xe", nhom: "Động sản", phiMacDinh: 1200000, builtin: true },
-    { ten: "Văn bản ủy quyền", nhom: "Ủy quyền", phiMacDinh: 800000, builtin: true },
+    { ten: "Giấy ủy quyền", nhom: "Ủy quyền", phiMacDinh: 500000, builtin: true },
+    { ten: "HĐ Ủy quyền toàn quyền nhà đất", nhom: "Ủy quyền", phiMacDinh: 1000000, builtin: true },
+    { ten: "Thụ ủy hợp đồng ủy quyền", nhom: "Ủy quyền", phiMacDinh: 500000, builtin: true },
+    { ten: "Giấy ủy quyền thành lập doanh nghiệp", nhom: "Ủy quyền", phiMacDinh: 500000, builtin: true },
+    { ten: "HĐ Mua bán xe máy", nhom: "Động sản", phiMacDinh: 500000, builtin: true },
+    { ten: "HĐ Mua bán xe ô tô", nhom: "Động sản", phiMacDinh: 1200000, builtin: true },
+    { ten: "HĐ Ủy quyền xe máy", nhom: "Ủy quyền xe", phiMacDinh: 500000, builtin: true },
+    { ten: "HĐ Ủy quyền xe ô tô", nhom: "Ủy quyền xe", phiMacDinh: 800000, builtin: true },
+    { ten: "HĐ Ủy quyền xe ô tô (1 bên)", nhom: "Ủy quyền xe", phiMacDinh: 800000, builtin: true },
   ];
   const bm = {};
   for (const b of BIEU_MAU) {
@@ -84,13 +96,13 @@ async function main() {
 
   const HO_SO = [
     { khach: "VŨ THỊ KIM ANH", loaiHoSo: "HOP_DONG", trangThai: "CHO_CCV", tknv: "linh.tt", types: ["HĐ Chuyển nhượng QSDĐ"] },
-    { khach: "HOÀNG MINH ĐỨC", loaiHoSo: "HOP_DONG", trangThai: "NHAP_LIEU", tknv: "hai.pt", types: ["Văn bản ủy quyền"] },
-    { khach: "ĐẶNG THU TRANG", loaiHoSo: "HOP_DONG", trangThai: "CHO_THU_NGAN", tknv: "linh.tt", ccv: "viet.nq", types: ["HĐ Mua bán xe"] },
+    { khach: "HOÀNG MINH ĐỨC", loaiHoSo: "HOP_DONG", trangThai: "NHAP_LIEU", tknv: "hai.pt", types: ["Giấy ủy quyền"] },
+    { khach: "ĐẶNG THU TRANG", loaiHoSo: "HOP_DONG", trangThai: "CHO_THU_NGAN", tknv: "linh.tt", ccv: "viet.nq", types: ["HĐ Mua bán xe ô tô"] },
     { khach: "BÙI VĂN KHÔI", loaiHoSo: "HOP_DONG", trangThai: "DANG_LIEN_THONG", tknv: "hai.pt", ccv: "hang.lt", types: ["HĐ Tặng cho QSDĐ"], soCC: 1965 },
     { khach: "LƯƠNG THẾ VINH", loaiHoSo: "HOP_DONG", trangThai: "DANG_LIEN_THONG", tknv: "han.vn", types: ["HĐ Chuyển nhượng QSDĐ"], soCC: 1974 },
     { khach: "PHẠM THỊ BÍCH HẰNG", loaiHoSo: "HOP_DONG", trangThai: "DANG_LIEN_THONG", tknv: "linh.tt", ccv: "viet.nq", types: ["HĐ Chuyển nhượng QSDĐ"], soCC: 1972 },
-    { khach: "NGÔ GIA BẢO", loaiHoSo: "HOP_DONG", trangThai: "DANG_LIEN_THONG", tknv: "han.vn", ccv: "hang.lt", types: ["Văn bản ủy quyền"], soCC: 1969 },
-    { khach: "ĐỖ MẠNH CƯỜNG", loaiHoSo: "HOP_DONG", trangThai: "HOAN_TAT", tknv: "hai.pt", ccv: "viet.nq", types: ["HĐ Mua bán xe"], soCC: 1961 },
+    { khach: "NGÔ GIA BẢO", loaiHoSo: "HOP_DONG", trangThai: "DANG_LIEN_THONG", tknv: "han.vn", ccv: "hang.lt", types: ["HĐ Ủy quyền toàn quyền nhà đất"], soCC: 1969 },
+    { khach: "ĐỖ MẠNH CƯỜNG", loaiHoSo: "HOP_DONG", trangThai: "HOAN_TAT", tknv: "hai.pt", ccv: "viet.nq", types: ["HĐ Mua bán xe máy"], soCC: 1961 },
   ];
 
   const nam = new Date().getFullYear();

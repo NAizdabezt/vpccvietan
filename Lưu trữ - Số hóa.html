@@ -85,7 +85,7 @@ function App() {
     <div style={{ position: "relative", display: "flex", height: "100%", background: "var(--bg-base)" }}>
       <ArcSidebar active={page} onNav={setPage} />
       <div style={{ flex: 1, display: "flex", flexDirection: "column", minWidth: 0, minHeight: 0 }}>
-        <ArcTopbar active={page} onLogout={goPortal} />
+        <ArcTopbar active={page} onLogout={goPortal} nv={nv} />
         <main style={{ flex: 1, minHeight: 0, display: "flex", flexDirection: "column", overflow: "hidden" }}>
           {content}
         </main>

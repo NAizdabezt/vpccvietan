@@ -132,7 +132,9 @@ function daysLate(txnDate) {
 function isOverdue(inv) { return inv.status !== "issued" && daysLate(inv.txnDate) > 1; }
 
 function fmtVND(n) { return (n || 0).toLocaleString("vi-VN") + "₫"; }
-function fullSoCC(n) { return POS_DATA.soCC.book + "/" + String(n).padStart(6, "0") + "/" + POS_DATA.soCC.year; }
+// book/year truyền tay để hiện đúng dữ liệu Smart Hint thật (theo loại hồ sơ +
+// năm thật từ server) — không truyền thì lùi về giá trị mock cho tương thích ngược.
+function fullSoCC(n, book, year) { return (book || POS_DATA.soCC.book) + "/" + String(n).padStart(6, "0") + "/" + (year || POS_DATA.soCC.year); }
 function creatorName(code) { return POS_DATA.creators[code] || code; }
 
 // Tổng hợp trạng thái 1 phiên từ các hồ sơ con

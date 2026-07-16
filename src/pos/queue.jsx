@@ -6,7 +6,7 @@ const { useState: useStateQ } = React;
 /* Bảng biên lai đã thu trong ca */
 function ReceiptsTable({ rows }) {
   const L = window.LucideReact;
-  const { fmtVND, fullSoCC } = window.POSFmt;
+  const { fmtVND } = window.POSFmt;
   const th = { padding: "10px 14px", textAlign: "left", fontSize: 11, fontWeight: 600, textTransform: "uppercase", letterSpacing: ".05em", color: "var(--text-tertiary)", whiteSpace: "nowrap" };
   const td = { padding: "11px 14px", fontSize: 13, color: "var(--text-secondary)", whiteSpace: "nowrap", verticalAlign: "middle" };
   return (
@@ -18,7 +18,7 @@ function ReceiptsTable({ rows }) {
         <tbody>
           {rows.map((r, ri) => (
             <tr key={r.id} style={{ borderBottom: ri < rows.length - 1 ? "1px solid var(--border-subtle)" : "none" }}>
-              <td style={{ ...td, fontFamily: "var(--font-mono)", fontSize: 12, color: "var(--text-primary)" }}>{fullSoCC(r.no)}</td>
+              <td style={{ ...td, fontFamily: "var(--font-mono)", fontSize: 12, color: "var(--text-primary)" }}>{r.no}</td>
               <td style={{ ...td, color: "var(--text-primary)", fontWeight: 500 }}>{r.khach}</td>
               <td style={td}>{r.service}</td>
               <td style={td}>
@@ -40,14 +40,19 @@ function ReceiptsTable({ rows }) {
 function PosScreen({ receiptStyle, onGoOverview }) {
   const L = window.LucideReact;
   const D = window.POS_DATA;
+  const VS = window.VASessions;
   const { StatStrip } = window.POSShell;
   const { fmtVND } = window.POSFmt;
   const { Button } = window.FSICheckinDesignSystem_019df8;
   const { FastTrackModal } = window;
   const [fastOpen, setFastOpen] = useStateQ(false);
 
-  const waiting = D.stats.find((s) => s.label === "Đang chờ thu");
-  const totalReceipts = D.receipts.reduce((a, r) => a + r.amount, 0);
+  // Biên lai đã thu trong ca — trước đây đọc từ POS_DATA.receipts tĩnh, giờ suy
+  // từ hồ sơ thật đã cấp số hôm nay (window.VAStore, cùng nguồn Luồng tổng quan).
+  const rows = window.VAStore.useHoSoStore();
+  const receipts = VS.receiptRowsToday(rows);
+  const waitingCount = rows.filter((r) => r.status === "waitNumberPay").length;
+  const totalReceipts = receipts.reduce((a, r) => a + r.amount, 0);
 
   return (
     <div style={{ height: "100%", overflowY: "auto", padding: 20 }}>
@@ -59,7 +64,7 @@ function PosScreen({ receiptStyle, onGoOverview }) {
           <L.Info size={18} color="var(--accent)" style={{ flexShrink: 0 }} />
           <div style={{ flex: 1, minWidth: 0, fontSize: 13, color: "var(--text-secondary)", lineHeight: 1.5 }}>
             Cấp số công chứng &amp; thu phí cho <b>phiên hồ sơ</b> được thực hiện trực tiếp tại <b>Luồng tổng quan</b> — trên các phiên ở trạng thái “Chờ cấp số &amp; thu phí”.
-            {waiting && <> Hiện có <b style={{ color: "var(--accent-hover)" }}>{waiting.value} phiên</b> đang chờ thu.</>}
+            {waitingCount > 0 && <> Hiện có <b style={{ color: "var(--accent-hover)" }}>{waitingCount} phiên</b> đang chờ thu.</>}
           </div>
           {onGoOverview && <Button variant="secondary" size="sm" icon={L.ArrowRight} onClick={onGoOverview}>Mở Luồng tổng quan</Button>}
         </div>
@@ -83,9 +88,13 @@ function PosScreen({ receiptStyle, onGoOverview }) {
         <div>
           <div style={{ display: "flex", alignItems: "baseline", gap: 8, marginBottom: 8 }}>
             <h2 style={{ fontSize: 14, fontWeight: 600, margin: 0 }}>Biên lai đã thu trong ca</h2>
-            <span style={{ fontSize: 12.5, color: "var(--text-tertiary)" }}>· {D.receipts.length} biên lai · {fmtVND(totalReceipts)}</span>
+            <span style={{ fontSize: 12.5, color: "var(--text-tertiary)" }}>· {receipts.length} biên lai · {fmtVND(totalReceipts)}</span>
           </div>
-          <ReceiptsTable rows={D.receipts} />
+          {receipts.length === 0 ? (
+            <div style={{ display: "grid", placeItems: "center", textAlign: "center", padding: "32px 12px", color: "var(--text-tertiary)", background: "var(--bg-surface)", border: "1px dashed var(--border-default)", borderRadius: "var(--radius-lg)", fontSize: 13 }}>
+              Chưa có biên lai nào được thu trong ca hôm nay.
+            </div>
+          ) : <ReceiptsTable rows={receipts} />}
         </div>
       </div>
 

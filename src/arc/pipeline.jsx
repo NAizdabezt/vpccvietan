@@ -5,7 +5,7 @@
    - Không còn bước "Chốt số công chứng" tách riêng: nghiệp vụ hiện yêu cầu CMC chỉ nhận
      dữ liệu kèm theo file đã scan — không thể đẩy metadata trước rồi đính file sau.
    Dùng CHUNG một store với các tab khác nên thao tác ở đây phản ánh ngay nơi khác. */
-const { useState: usePL, useEffect: useEffPL } = React;
+const { useState: usePL, useEffect: useEffPL, useRef: useRefPL } = React;
 
 /* ---- Nguồn dữ liệu dùng CHUNG (window.VAStore) — không còn _arcRows riêng ---- */
 function useArcRows() {
@@ -30,6 +30,8 @@ function ScanDrawer({ row, onClose, onComplete }) {
   const [cover, setCover] = usePL(false);
   const [pushing, setPushing] = usePL(false);
   const [err, setErr] = usePL("");
+  const [file, setFile] = usePL(null);
+  const fileInputRef = useRefPL(null);
 
   useEffPL(() => { window.VAApi.nhanVien.list("CCV").then(setCcvList).catch(() => setCcvList([])); }, []);
   const ccvHoTen = hasCCV ? row.notary.replace(/^CCV /, "") : (ccvList.find((c) => c.id === ccvId) || {}).hoTen;
@@ -41,7 +43,7 @@ function ScanDrawer({ row, onClose, onComplete }) {
   const hsName = C.autoName(row.ccNumber, "HS");
 
   const startScan = () => {
-    if (scanning || !ccvId) return;
+    if (scanning || !ccvId || !file) return;
     setScanning(true);
     setProc(0);
     setPages(6 + Math.floor(Math.random() * 12));
@@ -52,13 +54,21 @@ function ScanDrawer({ row, onClose, onComplete }) {
   };
 
   const ready = proc >= 4;
-  const canPush = ready && !!ccvId;
+  const canPush = ready && !!ccvId && !!file;
   const finish = async () => {
     setPushing(true);
     setErr("");
     try {
-      await window.VAApi.hoSo.fileScan(row.hoSoId, { loaiFile: "VB", tenFile: vbName, dungLuongKb: Math.round(compMB * 1024), doPhanGiaiDpi: 200 });
-      await window.VAApi.hoSo.fileScan(row.hoSoId, { loaiFile: "HS", tenFile: hsName, dungLuongKb: Math.round(compMB * 1024 * 0.6), doPhanGiaiDpi: 200 });
+      const vbForm = new FormData();
+      vbForm.append("loaiFile", "VB");
+      vbForm.append("file", file);
+      await window.VAApi.hoSo.fileScan(row.hoSoId, vbForm);
+
+      const hsForm = new FormData();
+      hsForm.append("loaiFile", "HS");
+      hsForm.append("file", file);
+      await window.VAApi.hoSo.fileScan(row.hoSoId, hsForm);
+
       await window.VAApi.hoSo.finalize(row.hoSoId, { ccvId });
       onComplete(row.hoSoId, pages, ccvHoTen);
     } catch (e) {
@@ -121,8 +131,13 @@ function ScanDrawer({ row, onClose, onComplete }) {
                 </> : <div style={{ margin: "auto", textAlign: "center", color: "var(--text-tertiary)" }}><L.FileScan size={28} /><div style={{ fontSize: 11.5, marginTop: 6 }}>Chưa có trang</div></div>}
               </div>
               <div style={{ flex: 1, display: "flex", flexDirection: "column", gap: 10 }}>
-                <Button variant="secondary" size="sm" icon={scanning ? L.Loader : L.ScanLine} disabled={scanning || !ccvId} onClick={startScan}>{scanning ? "Đang quét & xử lý…" : pages > 0 ? "Quét lại" : "Quét tài liệu"}</Button>
-                <div style={{ fontSize: 12, color: "var(--text-tertiary)" }}>PDF/A · 200 DPI · {pages} trang đã quét{!ccvId && " · cần gán CCV trước"}</div>
+                <input ref={fileInputRef} type="file" accept=".pdf,.jpg,.jpeg,.png" style={{ display: "none" }}
+                  onChange={(e) => setFile((e.target.files && e.target.files[0]) || null)} />
+                <Button variant="secondary" size="sm" icon={L.Paperclip} disabled={!ccvId} onClick={() => fileInputRef.current && fileInputRef.current.click()}>
+                  {file ? file.name : "Chọn file đã scan (PDF/ảnh)"}
+                </Button>
+                <Button variant="secondary" size="sm" icon={scanning ? L.Loader : L.ScanLine} disabled={scanning || !ccvId || !file} onClick={startScan}>{scanning ? "Đang quét & xử lý…" : pages > 0 ? "Quét lại" : "Quét tài liệu"}</Button>
+                <div style={{ fontSize: 12, color: "var(--text-tertiary)" }}>PDF/A · 200 DPI · {pages} trang đã quét{!ccvId ? " · cần gán CCV trước" : !file ? " · cần chọn file đã scan" : ""}</div>
                 <div style={{ display: "flex", alignItems: "center", gap: 8, padding: "9px 11px", borderRadius: "var(--radius-md)", background: "var(--bg-info)", border: "1px solid var(--border-info)", marginTop: "auto" }}>
                   <L.Sparkles size={14} color="var(--text-info)" />
                   <span style={{ fontSize: 12, color: "var(--text-secondary)" }}>Tiền xử lý, đặt tên &amp; ghép nối CMC chạy tự động sau khi quét.</span>
@@ -212,6 +227,20 @@ function ScanScreen() {
   const rows = useArcRows();
   const [sel, setSel] = usePL(null);
   const [toast, setToast] = usePL(null);
+
+  // Điều hướng từ thông báo (#hoSo=...&hanhDong=so-hoa) — tự mở đúng phiên trong hàng chờ.
+  // Dùng URL hash vì trình chủ tĩnh cục bộ redirect "*.html?..." làm mất query string.
+  const autoOpenedRef = useRefPL(false);
+  useEffPL(() => {
+    if (autoOpenedRef.current || !rows.length) return;
+    const params = new URLSearchParams(window.location.hash.replace(/^#/, ""));
+    const hoSoId = params.get("hoSo");
+    if (!hoSoId || params.get("hanhDong") !== "so-hoa") return;
+    const match = rows.find((r) => r.hoSoId === hoSoId);
+    if (!match) return;
+    autoOpenedRef.current = true;
+    setSel(match);
+  }, [rows]);
 
   const queue = rows.filter((r) => r.status === "waitAttach")
     .sort((a, b) => (VS.daysOverdue(b.date)) - (VS.daysOverdue(a.date)));

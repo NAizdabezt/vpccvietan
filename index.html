@@ -5,6 +5,7 @@
 <meta name="viewport" content="width=device-width, initial-scale=1" />
 <title>VPCC Việt An — Màn hình Soạn thảo (PH01)</title>
 <link rel="stylesheet" href="_ds/fsi-checkin-design-system-019df8fd-82d2-706c-bcbd-e163bd6586ff/styles.css" />
+<link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/quill@1.3.7/dist/quill.snow.css" />
 <style>
   html, body { margin: 0; height: 100%; }
   body { font-family: var(--font-sans); background: var(--bg-base); color: var(--text-primary); }
@@ -13,6 +14,28 @@
   ::-webkit-scrollbar { width: 9px; height: 9px; }
   ::-webkit-scrollbar-thumb { background: var(--border-default); border-radius: 5px; }
   ::-webkit-scrollbar-track { background: transparent; }
+
+  /* Trình soạn thảo Quill (src/editor.jsx) — khung trang A4 + toolbar khớp design system */
+  .va-quill-page { max-width: 660px; margin: 0 auto; background: #fff; border: 1px solid var(--border-subtle); box-shadow: var(--shadow-sm); border-radius: var(--radius-md); overflow: hidden; }
+  .va-quill-page .ql-toolbar.ql-snow { border: none; border-bottom: 1px solid var(--border-subtle); background: var(--bg-elevated); font-family: var(--font-sans); }
+  .va-quill-page .ql-container.ql-snow { border: none; }
+  .va-quill-page .ql-editor { font-family: 'Times New Roman', Times, serif; font-size: 14.5px; line-height: 2; color: var(--text-primary); min-height: 500px; }
+  .va-quill-page .ql-editor.ql-blank::before { font-style: normal; color: var(--text-tertiary); }
+  .va-field { border-radius: 4px; padding: 1px 5px; transition: background .1s, box-shadow .1s; }
+  .va-field[data-origin="empty"] { color: var(--text-tertiary); font-style: italic; box-shadow: inset 0 0 0 1px var(--border-strong); }
+  .va-field[data-origin="auto"] { background: var(--bg-success); color: var(--text-primary); font-weight: 600; font-style: normal; box-shadow: inset 0 0 0 1px var(--border-success); }
+  .va-field[data-origin="manual"] { background: var(--accent-muted); color: var(--accent-hover); font-weight: 600; font-style: normal; box-shadow: inset 0 0 0 1px var(--accent-border); }
+
+  /* In hợp đồng thật (src/printflow.jsx#ContractPrintView) — cô lập đúng kiểu
+     đã dùng cho bìa lưu trữ (src/arc/cover.jsx), áp cho #va-print-contracts. */
+  @media print {
+    body * { visibility: hidden !important; }
+    #va-print-contracts, #va-print-contracts * { visibility: visible !important; }
+    #va-print-contracts { display: block !important; position: fixed !important; inset: 0 !important; margin: 0 !important; }
+    .va-print-contract-page { max-width: none !important; border: none !important; box-shadow: none !important; border-radius: 0 !important; page-break-after: always; }
+    .va-field { background: none !important; box-shadow: none !important; font-weight: inherit !important; }
+    .va-field[data-origin="empty"] { text-decoration: underline; }
+  }
 </style>
 </head>
 <body>
@@ -24,6 +47,7 @@
 <script src="https://unpkg.com/lucide@0.460.0/dist/umd/lucide.js"></script>
 <script src="assets/lucide-react-shim.js"></script>
 <script src="_ds/fsi-checkin-design-system-019df8fd-82d2-706c-bcbd-e163bd6586ff/_ds_bundle.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/quill@1.3.7/dist/quill.js"></script>
 <script src="src/api-client.jsx"></script>
 <script type="text/babel" src="src/session-store.jsx"></script>
 
@@ -64,10 +88,12 @@ function App() {
   const [page, setPage] = useState("overview");
   const [activeSession, setActiveSession] = useState(null);
   const [composeKey, setComposeKey] = useState(0);
+  const [conflict, setConflict] = useState(null); // { session, lockedByName } | null
+  const [conflictBusy, setConflictBusy] = useState(false);
 
   const { Sidebar, Topbar, SessionBar } = window.VAShell;
   const { FlowA, PhotoQueueScreen } = window;
-  const { OverviewScreen, CompletedScreen, RequestsScreen, corrReqsForCcv, lockSession, unlockSession } = window.VASessions;
+  const { OverviewScreen, CompletedScreen, RequestsScreen, corrReqsForCcv, ConflictModal } = window.VASessions;
   const currentUser = nv ? (role === "ccv" ? "CCV " + nv.hoTen : nv.hoTen) : "";
   const goPortal = () => { window.VAApi.logout(); window.location.href = "Đăng nhập.html"; };
 
@@ -99,15 +125,51 @@ function App() {
     setComposeKey((k) => k + 1);
     setPage("compose");
   };
-  const openSession = (s) => {
-    // Ghi nhận khóa phiên khi truy cập để chỉnh sửa/soạn thảo
-    if (["draft", "drafting", "waitNumberPay"].includes(s.status)) lockSession(s.id, currentUser);
-    setActiveSession(s); setComposeKey((k) => k + 1); setPage("compose");
+  const enterCompose = (s) => { setActiveSession(s); setComposeKey((k) => k + 1); setPage("compose"); };
+  const openSession = async (s) => {
+    // Ghi nhận khóa phiên khi truy cập để chỉnh sửa/soạn thảo — khóa thật ở server (không còn localStorage giả)
+    if (!["draft", "drafting", "waitNumberPay"].includes(s.status) || !s.hoSoId) { enterCompose(s); return; }
+    try {
+      await window.VAApi.hoSo.khoaSoanThao(s.hoSoId);
+      enterCompose(s);
+    } catch (e) {
+      if (e.status === 409 && e.data && e.data.dangSoanBoi) {
+        setConflict({ session: s, lockedByName: e.data.dangSoanBoi.hoTen });
+      } else {
+        enterCompose(s); // lỗi khác (mạng...) — không chặn thao tác, cho mở như cũ
+      }
+    }
   };
+  const confirmTakeover = async () => {
+    if (!conflict) return;
+    setConflictBusy(true);
+    try {
+      await window.VAApi.hoSo.khoaSoanThao(conflict.session.hoSoId, true);
+      const s = conflict.session;
+      setConflict(null);
+      enterCompose(s);
+    } catch (e) {
+      setConflict(null);
+    } finally {
+      setConflictBusy(false);
+    }
+  };
+  const cancelConflict = () => setConflict(null);
   const exitCompose = () => {
-    if (activeSession && activeSession.id) unlockSession(activeSession.id);
+    if (activeSession && activeSession.hoSoId) window.VAApi.hoSo.moKhoaSoanThao(activeSession.hoSoId).catch(() => {});
     setPage("overview");
   };
+
+  // Điều hướng từ thông báo (#hoSo=...&hanhDong=xem) — nhảy thẳng vào soạn thảo đúng hồ sơ.
+  // Dùng URL hash (không phải query string) vì trình chủ tĩnh cục bộ redirect
+  // "*.html?..." và làm mất query string; hash luôn được trình duyệt giữ nguyên.
+  useEffect(() => {
+    const params = new URLSearchParams(window.location.hash.replace(/^#/, ""));
+    const hoSoId = params.get("hoSo");
+    if (!hoSoId || params.get("hanhDong") !== "xem") return;
+    window.history.replaceState(null, "", window.location.pathname + window.location.search);
+    window.VAApi.hoSo.get(hoSoId).then((row) => openSession(window.VAStore.fromApi(row))).catch(() => {});
+  }, []);
   const onNav = (id) => {
     if (id === "compose" && !activeSession) { startNew(); return; }
     setReqTick((t) => t + 1);
@@ -120,7 +182,7 @@ function App() {
     <div style={{ position: "relative", display: "flex", height: "100%", background: "var(--bg-base)" }}>
       <Sidebar active={page} onNav={onNav} role={role} badges={{ requests: reqCount }} />
       <div style={{ flex: 1, display: "flex", flexDirection: "column", minWidth: 0, minHeight: 0 }}>
-        <Topbar title={page === "overview" ? "Luồng tổng quan" : page === "completed" ? "Hồ sơ hoàn thành" : page === "requests" ? "Yêu cầu hiệu chỉnh" : page === "photos" ? "Hàng chờ ảnh" : page === "templates" ? "Biểu mẫu soạn thảo" : "Soạn thảo hồ sơ"} role={role} onRole={setRole} onLogout={goPortal} />
+        <Topbar title={page === "overview" ? "Luồng tổng quan" : page === "completed" ? "Hồ sơ hoàn thành" : page === "requests" ? "Yêu cầu hiệu chỉnh" : page === "photos" ? "Hàng chờ ảnh" : page === "templates" ? "Biểu mẫu soạn thảo" : "Soạn thảo hồ sơ"} role={role} onRole={setRole} onLogout={goPortal} nv={nv} />
         {page === "compose" && t.sessionBar && <SessionBar session={activeSession} />}
         <main style={{ flex: 1, minHeight: 0, display: "flex", flexDirection: "column", overflow: "hidden" }}>
           {page === "overview"
@@ -133,7 +195,7 @@ function App() {
                   ? <PhotoQueueScreen role={role} />
                   : page === "templates"
                     ? <window.VATemplateManager currentUser={currentUser} />
-                    : <FlowA key={composeKey} mode={composeMode} density={t.density} role={role} session={activeSession || { id: genSessionId() }} onExit={exitCompose} onStatus={() => {}} onMeta={(m) => setActiveSession((s) => s ? { ...s, ...m } : s)} />}
+                    : <FlowA key={composeKey} mode={composeMode} density={t.density} role={role} currentNv={nv} session={activeSession || { id: genSessionId() }} onExit={exitCompose} onStatus={() => {}} onMeta={(m) => setActiveSession((s) => s ? { ...s, ...m } : s)} />}
         </main>
       </div>
 
@@ -148,6 +210,15 @@ function App() {
           options={["#2563eb", "#2E3192", "#00A651"]}
           onChange={(v) => setTweak("accent", v)} />
       </TweaksPanel>
+
+      {conflict && (
+        <ConflictModal
+          lockedByName={conflict.lockedByName}
+          busy={conflictBusy}
+          onCancel={cancelConflict}
+          onConfirm={confirmTakeover}
+        />
+      )}
     </div>
   );
 }

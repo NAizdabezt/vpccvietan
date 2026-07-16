@@ -47,14 +47,32 @@ function fromApi(row) {
     secretary: row.tknv ? row.tknv.hoTen : "",
     notary: row.ccv ? "CCV " + row.ccv.hoTen : "",
     ccvId: row.ccvId || null,
+    // Dùng để suy tiền tố Số CC/CT/SY thật khi hiện Smart Hint ở màn Thu ngân
+    // (0036=HOP_DONG, CT=CHUNG_THUC, SY=SAO_Y — khớp đúng /cap-so ở server).
+    loaiHoSo: row.loaiHoSo,
     types: (row.bieuMaus || []).map((b) => b.ten),
+    // Phí thật theo TỪNG biểu mẫu (BieuMau.phiMacDinh) — dùng để phiếu thu Thu
+    // ngân hiện đúng giá thật thay vì bảng giá cứng đoán theo tên loại HĐ.
+    bieuMaus: (row.bieuMaus || []).map((b) => ({ id: b.id, ten: b.ten, phi: Number(b.phiMacDinh || 0) })),
     photos: (row.fileScans || []).length,
     ccNumber: row.soCongChung || row.soChungThuc || row.soSaoY || null,
     fee: Number(row.phiDichVu || 0),
     completedAt: row.trangThai === "HOAN_TAT" ? fmtDT(row.updatedAt) : undefined,
-    invoiced: false,
+    // Trước đây luôn hardcode false — màn Kế toán do đó không bao giờ thấy
+    // đúng hồ sơ nào đã thật sự xuất hóa đơn (HoSo.hoaDonId có thật ở server).
+    invoiced: !!row.hoaDonId,
     noHoSo: !!row.noHoSo,
     noTienThu: !!row.noTienThu,
+    // Số tiền đã thực thu ở lần cấp số — cần để tính "còn nợ bao nhiêu" (fee - soTienThucThu)
+    // vì trước đây cờ noTienThu được ghi mà không nơi nào tính/hiện số tiền còn thiếu.
+    soTienThucThu: row.soTienThucThu != null ? Number(row.soTienThucThu) : null,
+    // Hình thức thu THẬT lúc cấp số (cash/transfer) — khác "payMethod" bên dưới,
+    // vốn đã dùng cho luồng hiệu chỉnh mock riêng (chuỗi tiếng Việt hiển thị).
+    hinhThucThu: row.hinhThucThanhToan === "CHUYEN_KHOAN" ? "transfer" : row.hinhThucThanhToan === "TIEN_MAT" ? "cash" : null,
+    // Khóa soạn thảo THẬT từ server (thay cho khóa giả localStorage trước đây).
+    lockedBy: row.dangSoanBoi ? row.dangSoanBoi.hoTen : null,
+    lockedById: row.dangSoanBoiId || null,
+    lockedAt: row.dangSoanTu ? fmtDT(row.dangSoanTu) : null,
   };
 }
 
