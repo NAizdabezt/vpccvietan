@@ -3,7 +3,7 @@ const fs = require("fs");
 const path = require("path");
 const { prisma } = require("../lib/prisma");
 const { ghiNhatKy } = require("../lib/audit");
-const { taoThongBao } = require("../lib/thong-bao");
+const { taoThongBao, thongBaoBatBuoc } = require("../lib/thong-bao");
 const { requireAuth } = require("../middleware/auth");
 const { requireRole } = require("../middleware/rbac");
 const { asyncHandler } = require("../lib/asyncHandler");
@@ -157,7 +157,7 @@ router.post("/:id/chuyen-trang-thai", asyncHandler(async (req, res) => {
     nguoiThucHienId: req.user.id, loaiThaoTac: "CHUYEN_TRANG_THAI", doiTuong: row.id,
     giaTriCu: before.trangThai, giaTriMoi: trangThai, ketQua: "HOAN_TAT", tokenSuDung: "Token cá nhân",
   });
-  if (trangThai === "CHO_THU_NGAN") {
+  if (trangThai === "CHO_THU_NGAN" && await thongBaoBatBuoc(row.id, "cap-so-thu-phi")) {
     await taoThongBao({
       vaiTro: "THU_NGAN", tieuDe: "Hồ sơ chờ cấp số & thu phí",
       noiDung: `Hồ sơ ${row.maPhien} đã soạn xong.`, hoSoId: row.id, hanhDong: "cap-so",
@@ -196,10 +196,12 @@ router.post("/:id/cap-so", requireRole("THU_NGAN"), asyncHandler(async (req, res
     nguoiThucHienId: req.user.id, loaiThaoTac: "CAP_SO", doiTuong: hoSo.id,
     giaTriMoi: result.soCc, ketQua: "HOAN_TAT", tokenSuDung: "Token cá nhân",
   });
-  await taoThongBao({
-    vaiTro: "LUU_TRU", tieuDe: "Hồ sơ chờ số hóa & đẩy CMC",
-    noiDung: `Hồ sơ ${hoSo.maPhien} đã cấp số ${result.soCc}.`, hoSoId: hoSo.id, hanhDong: "so-hoa",
-  });
+  if (await thongBaoBatBuoc(hoSo.id, "so-hoa-day-cmc")) {
+    await taoThongBao({
+      vaiTro: "LUU_TRU", tieuDe: "Hồ sơ chờ số hóa & đẩy CMC",
+      noiDung: `Hồ sơ ${hoSo.maPhien} đã cấp số ${result.soCc}.`, hoSoId: hoSo.id, hanhDong: "so-hoa",
+    });
+  }
   res.json(result);
 }));
 
@@ -273,15 +275,27 @@ router.post("/:id/tat-toan-no", requireRole("THU_NGAN", "KE_TOAN"), asyncHandler
   res.json(row);
 }));
 
-/* Ghi nhận 1 file đã số hóa VÀ lưu file nhị phân thật (Mốc 6) — client gửi
-   multipart/form-data (trường "loaiFile" PHẢI đứng trước trường "file" trong
-   FormData để multer đã có req.body.loaiFile lúc xử lý file). Tên file thật
-   do SERVER quyết định theo đúng quy ước "0036-[SốCC]-[năm]-[VB/HS]" (không
-   tin tên file client gửi lên — tránh path traversal). */
-router.post("/:id/file-scan", requireRole("LUU_TRU"), uploadSingle("file"), asyncHandler(async (req, res) => {
+/* Ghi nhận 1 file đã số hóa/đính kèm VÀ lưu file nhị phân thật (Mốc 6) —
+   client gửi multipart/form-data (trường "loaiFile" PHẢI đứng trước trường
+   "file" trong FormData để multer đã có req.body.loaiFile lúc xử lý file).
+   Tên file thật do SERVER quyết định theo đúng quy ước
+   "0036-[SốCC]-[năm]-[loaiFile]" (không tin tên file client gửi lên — tránh
+   path traversal).
+   Mỗi vai trò chỉ được tạo đúng (những) loại file thuộc công việc của mình —
+   VB/HS (số hóa cuối) vẫn của riêng Lưu trữ; TKNV chụp giấy tờ/ảnh tra cứu
+   ngay trong phiên soạn thảo; CCV chụp ảnh tại quầy (camera cố định). */
+const ALLOWED_LOAI_BY_ROLE = {
+  TKNV: ["GIAY_TO_DINH_KEM", "ANH_TRA_CUU"],
+  CCV: ["ANH_CHUP_HIEN_TRUONG"],
+  LUU_TRU: ["VB", "HS"],
+};
+router.post("/:id/file-scan", uploadSingle("file"), asyncHandler(async (req, res) => {
   const { loaiFile } = req.body || {};
   if (!loaiFile) return res.status(400).json({ error: "Thiếu loại file" });
   if (!req.file) return res.status(400).json({ error: "Thiếu file tải lên" });
+
+  const opRole = (req.user.vaiTro || []).find((r) => (ALLOWED_LOAI_BY_ROLE[r] || []).includes(loaiFile));
+  if (!opRole) return res.status(403).json({ error: "Vai trò của bạn không được tạo loại file này" });
 
   const hoSo = await prisma.hoSo.findUnique({ where: { id: req.params.id } });
   if (!hoSo) return res.status(404).json({ error: "Không tìm thấy hồ sơ" });
@@ -291,11 +305,22 @@ router.post("/:id/file-scan", requireRole("LUU_TRU"), uploadSingle("file"), asyn
   const nam = new Date().getFullYear();
   const soCc = hoSo.soCongChung || hoSo.soChungThuc || hoSo.soSaoY || `0036-TAMTHOI-${nam}`;
   const ext = path.extname(req.file.originalname || "") || "";
-  const tenFile = `${soCc}-${loaiFile}${ext}`;
+  // VB/HS chỉ có tối đa 1 file/hồ sơ (Lưu trữ số hóa cuối) nên giữ tên cố định
+  // như cũ; 3 loại còn lại có thể có NHIỀU file/hồ sơ (nhiều giấy tờ, nhiều
+  // ảnh tra cứu, nhiều ảnh chụp CCV) — phải thêm hậu tố ngẫu nhiên để khỏi
+  // ghi đè lẫn nhau trên đĩa.
+  const canTrung = loaiFile === "VB" || loaiFile === "HS";
+  const hauTo = canTrung ? "" : "-" + Date.now().toString(36) + Math.random().toString(36).slice(2, 6);
+  const tenFile = `${soCc}-${loaiFile}${hauTo}${ext}`;
 
   const dir = path.join(__dirname, "..", "..", "uploads", "file-scans");
   fs.mkdirSync(dir, { recursive: true });
   fs.writeFileSync(path.join(dir, tenFile), req.file.buffer);
+
+  // dinhDang mặc định "PDF" trong schema chỉ đúng cho file scan/số hóa —
+  // ảnh chụp camera (JPEG/PNG) phải ghi đúng định dạng để phía xem trước biết
+  // hiển thị <img> hay mở PDF.
+  const dinhDang = ext ? ext.replace(".", "").toUpperCase() : "PDF";
 
   const row = await prisma.fileScan.create({
     data: {
@@ -304,6 +329,7 @@ router.post("/:id/file-scan", requireRole("LUU_TRU"), uploadSingle("file"), asyn
       tenFile,
       duongDan: `/uploads/file-scans/${tenFile}`,
       dungLuongKb: Math.round(req.file.size / 1024),
+      dinhDang,
       doPhanGiaiDpi: req.body.doPhanGiaiDpi ? Number(req.body.doPhanGiaiDpi) : 200,
     },
   });

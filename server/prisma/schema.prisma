@@ -203,6 +203,8 @@ enum LoaiFile {
   HS
   ANH_GHI_CHU_NGOAI_LE
   ANH_CHUP_HIEN_TRUONG
+  GIAY_TO_DINH_KEM
+  ANH_TRA_CUU
 }
 
 enum TrangThaiCmc {

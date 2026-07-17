@@ -55,6 +55,13 @@ function fromApi(row) {
     // ngân hiện đúng giá thật thay vì bảng giá cứng đoán theo tên loại HĐ.
     bieuMaus: (row.bieuMaus || []).map((b) => ({ id: b.id, ten: b.ten, phi: Number(b.phiMacDinh || 0) })),
     photos: (row.fileScans || []).length,
+    // Mảng file thật (giấy tờ đính kèm/ảnh tra cứu/ảnh CCV/file đã số hóa
+    // VB-HS) — trước đây chỉ có số đếm ở "photos", làm "Xem" không preview
+    // được gì thật. Giữ nguyên field ngày ISO gốc để so sánh/sắp xếp nếu cần.
+    fileScans: (row.fileScans || []).map((f) => ({
+      id: f.id, loaiFile: f.loaiFile, tenFile: f.tenFile, duongDan: f.duongDan,
+      dinhDang: f.dinhDang, createdAt: f.createdAt,
+    })),
     ccNumber: row.soCongChung || row.soChungThuc || row.soSaoY || null,
     fee: Number(row.phiDichVu || 0),
     completedAt: row.trangThai === "HOAN_TAT" ? fmtDT(row.updatedAt) : undefined,

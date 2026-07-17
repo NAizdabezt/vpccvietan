@@ -12,7 +12,7 @@ const PF_LAYOUT_OPTS = [
 
 /* cfg mặc định cho 1 hợp đồng */
 function defaultContractCfg() {
-  return { give: 2, store: 1, layout: {}, docOff: {}, shotsOn: true };
+  return { give: 2, store: 1, layout: {}, docOff: {}, shotsOn: true, ccvOn: true };
 }
 function layoutOf(cfg, type) { return cfg.layout[type] || "combine"; }
 function sheetsForGroup(cfg, type, imgs) {
@@ -112,7 +112,9 @@ function DocGroupRow({ type, imgs, cfg, disabled, onLayout, onToggleDoc }) {
                 <span style={{ width: 18, height: 18, borderRadius: 5, flexShrink: 0, display: "grid", placeItems: "center", border: "1.5px solid " + (docOn ? "var(--accent)" : "var(--border-strong)"), background: docOn ? "var(--accent)" : "transparent" }}>
                   {docOn && <L.Check size={12} color="#fff" />}
                 </span>
-                <L.FileImage size={15} color={`hsl(${im.hue} 42% 48%)`} style={{ flexShrink: 0 }} />
+                {im.imageUrl
+                  ? <span style={{ width: 22, height: 16, borderRadius: 3, overflow: "hidden", flexShrink: 0 }}><img src={im.imageUrl} alt="" style={{ width: "100%", height: "100%", objectFit: "cover" }} /></span>
+                  : <L.FileImage size={15} color={`hsl(${im.hue} 42% 48%)`} style={{ flexShrink: 0 }} />}
                 <span style={{ flex: 1, fontSize: 12.5, color: docOn ? "var(--text-primary)" : "var(--text-tertiary)", textDecoration: docOn ? "none" : "line-through" }}>{im.label}</span>
                 <span style={{ fontSize: 11, fontWeight: 600, color: docOn ? "var(--text-success)" : "var(--text-tertiary)" }}>{docOn ? "In" : "Không in"}</span>
               </button>
@@ -125,7 +127,7 @@ function DocGroupRow({ type, imgs, cfg, disabled, onLayout, onToggleDoc }) {
 }
 
 /* Khối "Hồ sơ đính kèm" cho 1 hợp đồng */
-function AttachBlock({ cfg, groups, shots, disabled, update }) {
+function AttachBlock({ cfg, groups, shots, ccvPhotos, disabled, update }) {
   const L = window.LucideReact;
   const idGroups = groups.filter((g) => g.cat === "id");
   const assetGroups = groups.filter((g) => g.cat !== "id");
@@ -163,15 +165,31 @@ function AttachBlock({ cfg, groups, shots, disabled, update }) {
           <span style={{ position: "absolute", top: 2, left: cfg.shotsOn ? 18 : 2, width: 16, height: 16, borderRadius: "50%", background: "#fff", transition: "left .15s" }} />
         </span>
       </div>
+
+      {/* Ảnh chụp công chứng viên — chỉ hiện khi hồ sơ này đã thật sự có ảnh
+          đính kèm (Hàng chờ ảnh), không hiện khối rỗng gây rối mắt. */}
+      {ccvPhotos.length > 0 && (
+        <div style={{ display: "flex", alignItems: "center", gap: 10, padding: "9px 11px", border: "1px solid var(--border-default)", borderRadius: "var(--radius-md)", background: cfg.ccvOn ? "var(--bg-surface)" : "var(--bg-elevated)" }}>
+          <L.Camera size={16} color={cfg.ccvOn ? "var(--accent)" : "var(--text-tertiary)"} />
+          <div style={{ flex: 1, minWidth: 0 }}>
+            <div style={{ fontSize: 13, fontWeight: 600 }}>Ảnh chụp công chứng viên</div>
+            <div style={{ fontSize: 11.5, color: "var(--text-tertiary)" }}>{ccvPhotos.length} ảnh · chụp tại quầy (Hàng chờ ảnh)</div>
+          </div>
+          <span style={{ fontSize: 11.5, fontFamily: "var(--font-mono)", color: "var(--text-tertiary)", marginRight: 2 }}>{cfg.ccvOn ? ccvPhotos.length + " khổ" : "—"}</span>
+          <span onClick={() => { if (!disabled) update((c) => ({ ...c, ccvOn: !c.ccvOn })); }} style={{ width: 36, height: 20, borderRadius: 10, background: cfg.ccvOn ? "var(--accent)" : "var(--border-strong)", position: "relative", flexShrink: 0, cursor: disabled ? "default" : "pointer" }}>
+            <span style={{ position: "absolute", top: 2, left: cfg.ccvOn ? 18 : 2, width: 16, height: 16, borderRadius: "50%", background: "#fff", transition: "left .15s" }} />
+          </span>
+        </div>
+      )}
     </div>
   );
 }
 
 /* Thẻ cấu hình của 1 hợp đồng */
-function ContractCard({ contract, idx, cfg, groups, shots, disabled, update, defaultOpen }) {
+function ContractCard({ contract, idx, cfg, groups, shots, ccvPhotos, disabled, update, defaultOpen }) {
   const L = window.LucideReact;
   const [open, setOpen] = usePf(defaultOpen);
-  const attachSheets = groups.reduce((s, g) => s + sheetsForGroup(cfg, g.type, g.imgs), 0) + (cfg.shotsOn ? shots.length : 0);
+  const attachSheets = groups.reduce((s, g) => s + sheetsForGroup(cfg, g.type, g.imgs), 0) + (cfg.shotsOn ? shots.length : 0) + (cfg.ccvOn ? ccvPhotos.length : 0);
 
   return (
     <section style={{ border: "1px solid var(--border-default)", borderRadius: "var(--radius-lg)", overflow: "hidden", background: "var(--bg-surface)" }}>
@@ -192,33 +210,47 @@ function ContractCard({ contract, idx, cfg, groups, shots, disabled, update, def
             </div>
           </div>
           <div style={{ borderTop: "1px dashed var(--border-default)" }} />
-          <AttachBlock cfg={cfg} groups={groups} shots={shots} disabled={disabled} update={update} />
+          <AttachBlock cfg={cfg} groups={groups} shots={shots} ccvPhotos={ccvPhotos} disabled={disabled} update={update} />
         </div>
       )}
     </section>
   );
 }
 
-function PrintStep({ picked, scanImages, shots, cfgs, setCfgs, ro, onPrint, saving, drafter, setDrafterByName, drafterOptions, meName, draftHtml, onPrintNow }) {
+function PrintStep({ picked, scanImages, shots, ccvPhotos, printDefaults, cfgs, setCfgs, ro, onPrint, saving, drafter, setDrafterByName, drafterOptions, meName, draftHtml, onPrintNow }) {
   const L = window.LucideReact;
   const { Button } = window.FSICheckinDesignSystem_019df8;
+  const ccvPh = ccvPhotos || [];
+  const pd = printDefaults || { anhTraCuu: true, giayToTuyThan: true, giayToTaiSan: true, anhCcv: true };
 
-  // gom ảnh scan theo loại (giữ thứ tự + cat)
+  // gom ảnh/giấy tờ thật theo loại (giữ thứ tự + cat) — scanImages giờ đến từ
+  // checklist thật đã cấu hình ở Thiết kế luồng + ảnh đã chụp thật ở bước Bóc
+  // tách, không còn là mock tĩnh.
   const groups = React.useMemo(() => {
     const m = {};
     scanImages.forEach((im) => { (m[im.type] = m[im.type] || { type: im.type, cat: im.cat, imgs: [] }).imgs.push(im); });
     return Object.values(m);
   }, [scanImages]);
 
-  const cfgFor = (id) => cfgs[id] || defaultContractCfg();
-  const updateCfg = (id, fn) => setCfgs((all) => ({ ...all, [id]: fn(all[id] || defaultContractCfg()) }));
+  // Cfg khởi tạo cho 1 hợp đồng CHƯA từng chỉnh — áp mặc định "chung chung" đã
+  // cấu hình ở Thiết kế luồng (bước In & chuyển) thay vì luôn bật hết.
+  const initialCfgFor = () => {
+    const docOff = {};
+    groups.forEach((g) => {
+      const allow = g.cat === "id" ? pd.giayToTuyThan : pd.giayToTaiSan;
+      if (!allow) g.imgs.forEach((im) => { docOff[im.id] = true; });
+    });
+    return { ...defaultContractCfg(), shotsOn: pd.anhTraCuu, ccvOn: pd.anhCcv, docOff };
+  };
+  const cfgFor = (id) => cfgs[id] || initialCfgFor();
+  const updateCfg = (id, fn) => setCfgs((all) => ({ ...all, [id]: fn(all[id] || initialCfgFor()) }));
 
   // tổng kết toàn phiên
   let totalGive = 0, totalStore = 0, totalAttach = 0;
   picked.forEach((c) => {
     const cfg = cfgFor(c.id);
     totalGive += cfg.give; totalStore += cfg.store;
-    totalAttach += groups.reduce((s, g) => s + sheetsForGroup(cfg, g.type, g.imgs), 0) + (cfg.shotsOn ? shots.length : 0);
+    totalAttach += groups.reduce((s, g) => s + sheetsForGroup(cfg, g.type, g.imgs), 0) + (cfg.shotsOn ? shots.length : 0) + (cfg.ccvOn ? ccvPh.length : 0);
   });
 
   const vpPf = window.VAUi.useViewport();
@@ -254,7 +286,7 @@ function PrintStep({ picked, scanImages, shots, cfgs, setCfgs, ro, onPrint, savi
             : <span>Cấu hình số bản in &amp; hồ sơ đính kèm cho hợp đồng.</span>}
         </div>
         {picked.map((c, i) => (
-          <ContractCard key={c.id} contract={c} idx={i} cfg={cfgFor(c.id)} groups={groups} shots={shots} disabled={ro}
+          <ContractCard key={c.id} contract={c} idx={i} cfg={cfgFor(c.id)} groups={groups} shots={shots} ccvPhotos={ccvPh} disabled={ro}
             update={(fn) => updateCfg(c.id, fn)} defaultOpen={i === 0} />
         ))}
       </div>
@@ -267,7 +299,7 @@ function PrintStep({ picked, scanImages, shots, cfgs, setCfgs, ro, onPrint, savi
         <div style={{ padding: 16, display: "flex", flexDirection: "column", gap: 10 }}>
           {picked.map((c, i) => {
             const cfg = cfgFor(c.id);
-            const at = groups.reduce((s, g) => s + sheetsForGroup(cfg, g.type, g.imgs), 0) + (cfg.shotsOn ? shots.length : 0);
+            const at = groups.reduce((s, g) => s + sheetsForGroup(cfg, g.type, g.imgs), 0) + (cfg.shotsOn ? shots.length : 0) + (cfg.ccvOn ? ccvPh.length : 0);
             return (
               <div key={c.id} style={{ display: "flex", alignItems: "baseline", gap: 8, fontSize: 12.5 }}>
                 <span style={{ fontFamily: "var(--font-mono)", color: "var(--text-tertiary)" }}>{i + 1}.</span>

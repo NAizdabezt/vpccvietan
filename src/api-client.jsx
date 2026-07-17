@@ -174,4 +174,6 @@ function connectRealtime(onMessage) {
   };
 }
 
-window.VAApi = { login, logout, doiMatKhau, getToken, getUser, isAuthed, request, hoSo, bieuMau, hoaDon, khachHang, nhanVien, noiLamViec, uyThac, auditLog, thongBao, luongNghiepVu, connectRealtime };
+// apiBase: để dựng URL xem file thật (ảnh/PDF đã tải lên) ngoài fetch wrapper,
+// vd <img src={window.VAApi.apiBase + fileScan.duongDan}>.
+window.VAApi = { login, logout, doiMatKhau, getToken, getUser, isAuthed, request, hoSo, bieuMau, hoaDon, khachHang, nhanVien, noiLamViec, uyThac, auditLog, thongBao, luongNghiepVu, connectRealtime, apiBase: API_BASE };

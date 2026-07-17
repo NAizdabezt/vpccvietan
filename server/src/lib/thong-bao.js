@@ -21,4 +21,24 @@ async function taoThongBao({ vaiTro, nhanVienId, tieuDe, noiDung, hoSoId, hanhDo
   return row;
 }
 
-module.exports = { taoThongBao };
+// Kiểm tra Thiết kế luồng (Quản trị hệ thống) có tắt thông báo cho bước NÀY
+// hay không — mỗi bước "Cấp số & thu phí"/"Số hóa & đẩy CMC" có tickbox
+// "Hiện thông báo" riêng theo từng NHÓM biểu mẫu. Hồ sơ có thể gồm nhiều nhóm
+// (nhiều biểu mẫu khác nhóm) — chỉ tắt thông báo khi TẤT CẢ nhóm liên quan đều
+// tắt; nhóm chưa cấu hình luồng nào thì mặc định vẫn bật (an toàn, không âm
+// thầm mất thông báo).
+async function thongBaoBatBuoc(hoSoId, buocId) {
+  const hoSo = await prisma.hoSo.findUnique({ where: { id: hoSoId }, include: { bieuMaus: true } });
+  if (!hoSo) return true;
+  const nhoms = [...new Set((hoSo.bieuMaus || []).map((b) => b.nhom).filter(Boolean))];
+  if (!nhoms.length) return true;
+  const flows = await prisma.luongNghiepVu.findMany({ where: { ten: { in: nhoms }, trangThai: "DANG_AP_DUNG" } });
+  if (!flows.length) return true;
+  return flows.some((f) => {
+    const buoc = f.danhSachBuoc && f.danhSachBuoc.buoc;
+    const b = Array.isArray(buoc) && buoc.find((x) => x.id === buocId);
+    return !b || b.thongBao !== false;
+  });
+}
+
+module.exports = { taoThongBao, thongBaoBatBuoc };

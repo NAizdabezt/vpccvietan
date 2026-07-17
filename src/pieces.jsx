@@ -65,26 +65,38 @@ function ScanGallery({ images, activeId, onSelect }) {
 }
 
 /* ---- Cột phải: tài liệu OCR, sửa được ---- */
-function EditableDoc({ doc, onField, defaultOpen, readOnly }) {
+function EditableDoc({ doc, onField, defaultOpen, readOnly, onCapture, uploading }) {
   const L = window.LucideReact;
   const { Badge } = window.FSICheckinDesignSystem_019df8;
+  const { MobileCameraPicker } = window.VACapture || {};
   const [open, setOpen] = usePc(defaultOpen || false);
   const Icon = L[doc.icon] || L.File;
   return (
     <div style={{ border: "1px solid var(--border-default)", borderRadius: "var(--radius-lg)", background: "var(--bg-surface)", overflow: "hidden" }}>
-      <div onClick={() => setOpen(!open)} style={{ display: "flex", alignItems: "center", gap: 10, padding: "10px 12px", cursor: "pointer" }}>
-        <div style={{ width: 30, height: 30, borderRadius: 7, background: "var(--accent-muted)", display: "grid", placeItems: "center", flexShrink: 0 }}>
-          <Icon size={16} color="var(--accent)" />
-        </div>
-        <div style={{ flex: 1, minWidth: 0 }}>
-          <div style={{ fontSize: 13, fontWeight: 600, display: "flex", alignItems: "center", gap: 6 }}>
-            {doc.name}
-            {doc.qr && <span title="Có mã QR" style={{ display: "inline-flex", alignItems: "center", gap: 3, fontSize: 10, fontWeight: 700, color: "var(--accent)", background: "var(--accent-muted)", borderRadius: 4, padding: "1px 5px" }}><L.QrCode size={10} /> QR</span>}
+      <div style={{ display: "flex", alignItems: "center", gap: 10, padding: "10px 12px" }}>
+        <div onClick={() => setOpen(!open)} style={{ display: "flex", alignItems: "center", gap: 10, flex: 1, minWidth: 0, cursor: "pointer" }}>
+          {doc.imageUrl ? (
+            <div style={{ width: 30, height: 30, borderRadius: 7, overflow: "hidden", flexShrink: 0 }}>
+              <img src={doc.imageUrl} alt="" style={{ width: "100%", height: "100%", objectFit: "cover" }} />
+            </div>
+          ) : (
+            <div style={{ width: 30, height: 30, borderRadius: 7, background: "var(--accent-muted)", display: "grid", placeItems: "center", flexShrink: 0 }}>
+              <Icon size={16} color="var(--accent)" />
+            </div>
+          )}
+          <div style={{ flex: 1, minWidth: 0 }}>
+            <div style={{ fontSize: 13, fontWeight: 600, display: "flex", alignItems: "center", gap: 6 }}>
+              {doc.name}
+              {doc.qr && <span title="Có mã QR" style={{ display: "inline-flex", alignItems: "center", gap: 3, fontSize: 10, fontWeight: 700, color: "var(--accent)", background: "var(--accent-muted)", borderRadius: 4, padding: "1px 5px" }}><L.QrCode size={10} /> QR</span>}
+            </div>
+            <div style={{ fontSize: 11.5, color: "var(--text-tertiary)" }}>{doc.imageUrl ? "Đã chụp ảnh" : doc.source}</div>
           </div>
-          <div style={{ fontSize: 11.5, color: "var(--text-tertiary)" }}>{doc.source}</div>
         </div>
+        {onCapture && !readOnly && (
+          <MobileCameraPicker size="sm" label={uploading ? "Đang tải…" : doc.imageUrl ? "Chụp lại" : "Chụp ảnh"} disabled={uploading} onCapture={(file) => onCapture(doc.id, file)} />
+        )}
         <Badge tone="neutral">Nhập tay</Badge>
-        <L.ChevronDown size={15} color="var(--text-tertiary)" style={{ transform: open ? "rotate(180deg)" : "none", transition: "transform .15s" }} />
+        <L.ChevronDown size={15} color="var(--text-tertiary)" style={{ transform: open ? "rotate(180deg)" : "none", transition: "transform .15s", cursor: "pointer", flexShrink: 0 }} onClick={() => setOpen(!open)} />
       </div>
       {open && (
         <div style={{ borderTop: "1px solid var(--border-subtle)", padding: "10px 12px", display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(200px, 1fr))", gap: "10px 12px" }}>
@@ -139,29 +151,32 @@ function CheckDocRow({ doc, checked, onToggle, readOnly }) {
 }
 
 /* ---- Vùng tải ảnh chụp màn hình tra cứu ---- */
-function UploadZone({ files, onAdd, onRemove, label, hint, readOnly }) {
+function UploadZone({ files, onFile, onRemove, label, hint, readOnly, uploading }) {
   const L = window.LucideReact;
+  const { MobileCameraPicker } = window.VACapture || {};
+  // input file thường (capture="environment" chỉ có tác dụng trên di động —
+  // trên máy tính trình duyệt tự bỏ qua thuộc tính này và mở hộp chọn file
+  // bình thường), nên dùng chung 1 component cho cả 2 loại thiết bị.
   return (
     <div style={{ display: "flex", flexDirection: "column", gap: 10 }}>
-      {!readOnly && (
-      <button type="button" onClick={onAdd} style={{
-        display: "flex", flexDirection: "column", alignItems: "center", justifyContent: "center", gap: 6,
-        padding: "20px 14px", border: "1.5px dashed var(--border-strong)", borderRadius: "var(--radius-lg)",
-        background: "var(--bg-surface)", cursor: "pointer", color: "var(--text-secondary)", fontFamily: "var(--font-sans)",
-      }}
-      onMouseEnter={(e) => { e.currentTarget.style.borderColor = "var(--accent)"; e.currentTarget.style.background = "var(--accent-muted)"; }}
-      onMouseLeave={(e) => { e.currentTarget.style.borderColor = "var(--border-strong)"; e.currentTarget.style.background = "var(--bg-surface)"; }}>
-        <L.ImagePlus size={22} color="var(--accent)" />
-        <span style={{ fontSize: 13, fontWeight: 600, color: "var(--text-primary)" }}>{label}</span>
-        {hint && <span style={{ fontSize: 11.5, color: "var(--text-tertiary)", textAlign: "center" }}>{hint}</span>}
-      </button>
+      {!readOnly && MobileCameraPicker && (
+        <div style={{
+          display: "flex", flexDirection: "column", alignItems: "center", justifyContent: "center", gap: 8,
+          padding: "20px 14px", border: "1.5px dashed var(--border-strong)", borderRadius: "var(--radius-lg)",
+          background: "var(--bg-surface)",
+        }}>
+          <L.ImagePlus size={22} color="var(--accent)" />
+          <span style={{ fontSize: 13, fontWeight: 600, color: "var(--text-primary)", textAlign: "center" }}>{label}</span>
+          {hint && <span style={{ fontSize: 11.5, color: "var(--text-tertiary)", textAlign: "center" }}>{hint}</span>}
+          <MobileCameraPicker variant="secondary" size="sm" label={uploading ? "Đang tải…" : "Chụp/chọn ảnh"} disabled={uploading} onCapture={onFile} />
+        </div>
       )}
       {files.length > 0 && (
         <div style={{ display: "flex", flexWrap: "wrap", gap: 8 }}>
           {files.map((f) => (
             <div key={f.id} style={{ width: 96, position: "relative" }}>
-              <div style={{ width: 96, height: 70, borderRadius: 8, border: "1px solid var(--border-default)", overflow: "hidden", display: "grid", placeItems: "center", background: `linear-gradient(135deg, hsl(${f.hue} 38% 90%), hsl(${f.hue} 30% 76%))` }}>
-                <L.FileImage size={20} color={`hsl(${f.hue} 42% 42%)`} />
+              <div style={{ width: 96, height: 70, borderRadius: 8, border: "1px solid var(--border-default)", overflow: "hidden", display: "grid", placeItems: "center", background: f.imageUrl ? undefined : `linear-gradient(135deg, hsl(${f.hue} 38% 90%), hsl(${f.hue} 30% 76%))` }}>
+                {f.imageUrl ? <img src={f.imageUrl} alt="" style={{ width: "100%", height: "100%", objectFit: "cover" }} /> : <L.FileImage size={20} color={`hsl(${f.hue} 42% 42%)`} />}
               </div>
               {!readOnly && <button type="button" onClick={() => onRemove(f.id)} style={{ position: "absolute", top: 4, right: 4, width: 20, height: 20, borderRadius: 6, border: "none", background: "rgba(28,28,26,.7)", color: "#fff", display: "grid", placeItems: "center", cursor: "pointer" }}>
                 <L.X size={12} />

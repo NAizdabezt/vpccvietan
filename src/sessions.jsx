@@ -756,6 +756,19 @@ function SessionDetailModal({ session, onClose, role, correctable, currentUser, 
   const over = s.status !== "done" && daysOverdue(s.date) > 0;
   const [corr, setCorr] = useSx(null);
   const [settling, setSettling] = useSx(false);
+  // Nạp chi tiết thật (nội dung đã soạn + danh sách file) lúc mở modal — danh
+  // sách hồ sơ (VAStore) chỉ có "photos" (đếm) nên phải lấy riêng để xem trước
+  // thật, không hiện đếm-suông như trước.
+  const [detail, setDetail] = useSx(null);
+  React.useEffect(() => {
+    if (!s.hoSoId) return;
+    window.VAApi.hoSo.get(s.hoSoId).then(setDetail).catch(() => {});
+  }, [s.hoSoId]);
+  const fileScans = (detail && detail.fileScans) || s.fileScans || [];
+  const soHoaFiles = fileScans.filter((f) => f.loaiFile === "VB" || f.loaiFile === "HS");
+  const dangLamFiles = fileScans.filter((f) => f.loaiFile !== "VB" && f.loaiFile !== "HS");
+  const vanBanHtml = Object.values((detail && detail.noiDungDaSoan) || {}).filter(Boolean).join("<hr/>");
+  const LOAI_FILE_LABEL = { VB: "Văn bản", HS: "Hồ sơ" };
   const owed = owedAmount(s);
   const hasDebt = s.noTienThu || s.noHoSo;
   const settleDebt = async () => {
@@ -902,17 +915,60 @@ function SessionDetailModal({ session, onClose, role, correctable, currentUser, 
             </div>
           )}
 
-          {/* Ảnh đính kèm */}
+          {/* Xem trước hồ sơ — luôn có "File tổng" (văn bản đã soạn + giấy tờ/ảnh
+              đã đính kèm trong phiên); riêng khi Lưu trữ đã số hóa xong thì có
+              thêm 2 file THẬT tách biệt (VB/HS) bên dưới. */}
           <div>
             <div style={{ display: "flex", alignItems: "center", gap: 8, marginBottom: 10 }}>
-              <L.Images size={15} color="var(--text-tertiary)" />
-              <span style={{ fontSize: 13, fontWeight: 600 }}>File số hóa đính kèm</span>
-              <span style={{ fontSize: 12, color: "var(--text-tertiary)" }}>· {s.photos || 0} trang</span>
+              <L.FileStack size={15} color="var(--text-tertiary)" />
+              <span style={{ fontSize: 13, fontWeight: 600 }}>File tổng</span>
+              <span style={{ fontSize: 12, color: "var(--text-tertiary)" }}>· văn bản đã soạn + giấy tờ/ảnh đã đính kèm</span>
             </div>
-            {s.photos > 0
-              ? <div style={{ display: "flex", gap: 10, flexWrap: "wrap" }}>{Array.from({ length: s.photos }).map((_, i) => <MiniPhoto key={i} hue={(i * 70 + 150) % 360} size={88} />)}</div>
-              : <div style={{ fontSize: 12.5, color: "var(--text-tertiary)", fontStyle: "italic", padding: "12px 0" }}>Chưa có file số hóa nào được gắn vào hồ sơ.</div>}
+            {vanBanHtml ? (
+              <div style={{ maxHeight: 220, overflowY: "auto", border: "1px solid var(--border-subtle)", borderRadius: "var(--radius-md)", padding: "12px 16px", background: "#fff", marginBottom: dangLamFiles.length ? 10 : 0 }}
+                className="ql-editor" dangerouslySetInnerHTML={{ __html: vanBanHtml }} />
+            ) : (
+              <div style={{ fontSize: 12.5, color: "var(--text-tertiary)", fontStyle: "italic", padding: "8px 0" }}>Chưa có nội dung văn bản đã soạn.</div>
+            )}
+            {dangLamFiles.length > 0 && (
+              <div style={{ display: "flex", gap: 10, flexWrap: "wrap" }}>
+                {dangLamFiles.map((f) => (
+                  <a key={f.id} href={window.VAApi.apiBase + f.duongDan} target="_blank" rel="noreferrer" style={{ display: "block", width: 88 }}>
+                    <div style={{ width: 88, height: 66, borderRadius: 8, border: "1px solid var(--border-default)", overflow: "hidden" }}>
+                      {["JPG", "JPEG", "PNG"].includes((f.dinhDang || "").toUpperCase())
+                        ? <img src={window.VAApi.apiBase + f.duongDan} alt="" style={{ width: "100%", height: "100%", objectFit: "cover" }} />
+                        : <div style={{ width: "100%", height: "100%", display: "grid", placeItems: "center", background: "var(--bg-inset)" }}><L.FileText size={20} color="var(--text-tertiary)" /></div>}
+                    </div>
+                  </a>
+                ))}
+              </div>
+            )}
+            {!vanBanHtml && !dangLamFiles.length && <div style={{ fontSize: 12.5, color: "var(--text-tertiary)", fontStyle: "italic" }}>Chưa có gì để xem trước.</div>}
           </div>
+
+          {soHoaFiles.length > 0 && (
+            <div>
+              <div style={{ display: "flex", alignItems: "center", gap: 8, marginBottom: 10 }}>
+                <L.ScanLine size={15} color="var(--text-tertiary)" />
+                <span style={{ fontSize: 13, fontWeight: 600 }}>File đã số hóa</span>
+                <span style={{ fontSize: 12, color: "var(--text-tertiary)" }}>· {soHoaFiles.length} file thật từ Lưu trữ</span>
+              </div>
+              <div style={{ display: "flex", gap: 10, flexWrap: "wrap" }}>
+                {soHoaFiles.map((f) => (
+                  <a key={f.id} href={window.VAApi.apiBase + f.duongDan} target="_blank" rel="noreferrer" style={{
+                    display: "flex", alignItems: "center", gap: 8, padding: "9px 13px", borderRadius: "var(--radius-md)",
+                    border: "1px solid var(--border-default)", background: "var(--bg-surface)", textDecoration: "none",
+                  }}>
+                    <L.FileCheck2 size={16} color="var(--accent)" />
+                    <div style={{ minWidth: 0 }}>
+                      <div style={{ fontSize: 12.5, fontWeight: 600, color: "var(--text-primary)" }}>{LOAI_FILE_LABEL[f.loaiFile] || f.loaiFile}</div>
+                      <div style={{ fontSize: 11, color: "var(--text-tertiary)", fontFamily: "var(--font-mono)", whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis", maxWidth: 160 }}>{f.tenFile}</div>
+                    </div>
+                  </a>
+                ))}
+              </div>
+            </div>
+          )}
 
           {/* Nhật ký hiệu chỉnh (Audit Trail) */}
           {s.audit && s.audit.length > 0 && (
@@ -1031,6 +1087,7 @@ function SessionRow({ s, last, currentUser, canAttach, onAttach, canCapture, onC
           ? <div style={{ display: "flex", alignItems: "center", gap: 7 }}><Avatar name={s.notary} size={22} tone="accent" /><span style={{ fontSize: 12.5, color: "var(--text-primary)" }}>{s.notary.replace(/^CCV /, "")}</span></div>
           : <span style={{ fontSize: 12, color: "var(--text-tertiary)", fontStyle: "italic" }}>Chưa gán</span>}
       </td>
+      <td style={{ ...td, whiteSpace: "nowrap", fontSize: 12, fontFamily: "var(--font-mono)" }}>{s.createdAt || "—"}</td>
       <td style={{ ...td, whiteSpace: "nowrap" }}>
         <div style={{ display: "flex", flexDirection: "column", gap: 3, alignItems: "flex-start" }}>
           <StatusPill status={s.status} size="sm" />
@@ -1091,9 +1148,9 @@ function SessionTable({ title, icon, accent, items, ...rowProps }) {
         <span style={{ fontSize: 12.5, color: "var(--text-tertiary)" }}>· {items.length} phiên</span>
       </div>
       <div style={{ border: "1px solid var(--border-default)", borderRadius: "var(--radius-lg)", background: "var(--bg-surface)", overflowX: "auto" }}>
-        <table style={{ width: "100%", minWidth: 680, borderCollapse: "collapse" }}>
+        <table style={{ width: "100%", minWidth: 780, borderCollapse: "collapse" }}>
           <thead><tr style={{ background: "var(--bg-elevated)", borderBottom: "1px solid var(--border-subtle)" }}>
-            {["Mã phiên", "Khách hàng", "Biểu mẫu", "CCV phụ trách", "Trạng thái", ""].map((h, i) => <th key={i} style={th}>{h}</th>)}
+            {["Mã phiên", "Khách hàng", "Biểu mẫu", "CCV phụ trách", "Thời gian", "Trạng thái", ""].map((h, i) => <th key={i} style={th}>{h}</th>)}
           </tr></thead>
           <tbody>
             {items.map((s, i) => <SessionRow key={s.id} s={s} last={i === items.length - 1} {...rowProps} />)}

@@ -57,6 +57,51 @@ function buildStepGuide(stepIndex, picked, activeFlows) {
   return { moTa, viec, slaPhut };
 }
 
+// Nhóm biểu mẫu chưa được cấu hình luồng nào → mặc định vẫn bắt buộc ảnh tra
+// cứu (an toàn, giữ đúng hành vi cũ); chỉ khi có cấu hình rõ tắt yêu cầu này
+// (Thiết kế luồng → bước Tra cứu ngăn chặn) mới cho qua bước không cần ảnh.
+function traCuuBatBuoc(picked, activeFlows) {
+  const nhoms = [...new Set((picked || []).map((p) => p.group).filter(Boolean))];
+  if (!nhoms.length) return true;
+  return nhoms.some((nhom) => {
+    const flow = activeFlows.find((f) => f.ten === nhom);
+    const buoc = flow && flow.danhSachBuoc && flow.danhSachBuoc.buoc;
+    const b = Array.isArray(buoc) && buoc.find((x) => x.id === "tra-cuu");
+    return !b || b.yeuCauAnhTraCuu !== false;
+  });
+}
+
+// Đoán "giấy tờ tùy thân" (id) vs "giấy tờ tài sản" (asset) theo tên giấy tờ —
+// Thiết kế luồng chưa có trường phân loại riêng nên tạm dùng từ khóa, đủ để
+// nhóm đúng khối in tùy thân/tài sản như hồi mock trước đây.
+const ID_DOC_KEYWORDS = ["cccd", "cmnd", "căn cước", "hộ khẩu", "hôn nhân"];
+function guessDocCat(name) {
+  const n = (name || "").toLowerCase();
+  return ID_DOC_KEYWORDS.some((k) => n.includes(k)) ? "id" : "asset";
+}
+
+// Giấy tờ Bóc tách đã chụp ảnh thật → thành các "khối in" ở bước In & chuyển
+// (chỉ những giấy tờ ĐÃ có ảnh mới in được — chưa chụp thì không có gì để in).
+function buildPrintGroups(ocr) {
+  return ocr.filter((d) => d.imageUrl).map((d) => ({ id: d.id, type: d.name, cat: guessDocCat(d.name), hue: 210, imageUrl: d.imageUrl }));
+}
+
+// Mặc định bật/tắt từng khối in (đã cấu hình chung ở Thiết kế luồng, bước In &
+// chuyển) — người soạn vẫn bật/tắt lại được cho từng phiên ở printflow.jsx.
+function printDefaultsFor(picked, activeFlows) {
+  const nhoms = [...new Set((picked || []).map((p) => p.group).filter(Boolean))];
+  const merged = { anhTraCuu: true, giayToTuyThan: true, giayToTaiSan: true, anhCcv: true };
+  nhoms.forEach((nhom) => {
+    const flow = activeFlows.find((f) => f.ten === nhom);
+    const buoc = flow && flow.danhSachBuoc && flow.danhSachBuoc.buoc;
+    const b = Array.isArray(buoc) && buoc.find((x) => x.id === "in-chuyen");
+    const im = b && b.inMacDinh;
+    if (!im) return;
+    Object.keys(merged).forEach((k) => { if (im[k] === false) merged[k] = false; });
+  });
+  return merged;
+}
+
 function StepGuide({ guide }) {
   const L = window.LucideReact;
   if (!guide) return null;
@@ -157,6 +202,10 @@ function FlowA({ density, session, onExit, onStatus, onMeta, mode, role, current
       .then((rows) => setRealTpls(rows.map((r) => ({
         id: r.id, tid: r.id, name: r.ten, group: r.nhom,
         kind: window.VATemplateModel.nhomToKind(r.nhom),
+        // Nội dung Word thật đã parse (mammoth, xem Biểu mẫu soạn thảo) — thiếu
+        // dòng này thì bước Soạn thảo/In luôn rơi về mẫu chung cứng dù đã có
+        // file .docx thật, vì htmlOf() chỉ ưu tiên noiDung.html khi tồn tại.
+        noiDung: r.noiDung,
       }))))
       .catch((e) => console.error("Không tải được danh sách biểu mẫu:", e));
   }, []);
@@ -227,12 +276,18 @@ function FlowA({ density, session, onExit, onStatus, onMeta, mode, role, current
   // Mở lại phiên đã có hồ sơ (kể cả phiên vừa tạo trong lượt này) -> nạp lại
   // nội dung Quill đã lưu trước đó cho hồ sơ này, để bước Soạn thảo không sinh
   // lại từ đầu và mất nội dung đã gõ/auto-fill trong lượt mở trước.
+  // File thật đã đính kèm cho hồ sơ này (giấy tờ Bóc tách/ảnh tra cứu đã có
+  // ngay trong state cục bộ khi tự chụp trong phiên này, nhưng ảnh CCV chụp ở
+  // "Hàng chờ ảnh" — màn hoàn toàn tách biệt — chỉ biết được qua API) — nạp
+  // lại lúc mở phiên VÀ mỗi lần vào bước "In & chuyển" để luôn thấy ảnh CCV
+  // mới nhất nếu vừa được đính kèm sau khi phiên này đã mở.
+  const [sessionFiles, setSessionFiles] = useStateA([]);
   React.useEffect(() => {
     if (!hoSoId) return;
     window.VAApi.hoSo.get(hoSoId)
-      .then((row) => setDraftHtml(row.noiDungDaSoan || {}))
+      .then((row) => { setDraftHtml(row.noiDungDaSoan || {}); setSessionFiles(row.fileScans || []); })
       .catch(() => {});
-  }, [hoSoId]);
+  }, [hoSoId, step === 4]);
 
   // Khi danh sách biểu mẫu thật tải xong, đối chiếu lại theo tên để thay id giả
   // lập ban đầu (vd "t1" — dùng làm mặc định lúc TPLS chưa tải xong) bằng UUID
@@ -241,17 +296,55 @@ function FlowA({ density, session, onExit, onStatus, onMeta, mode, role, current
     if (!realTpls.length) return;
     setPicked((arr) => arr.map((p) => {
       const match = realTpls.find((t) => t.name === p.name);
-      return match ? { ...p, id: match.id, tid: match.id, group: match.group, kind: match.kind } : p;
+      return match ? { ...p, id: match.id, tid: match.id, group: match.group, kind: match.kind, noiDung: match.noiDung } : p;
     }));
   }, [realTpls]);
 
   const setField = (docId, fi, val) => setOcr((arr) => arr.map((d) => d.id === docId ? { ...d, fields: d.fields.map((f, i) => i === fi ? { ...f, value: val } : f) } : d));
-  const addTemplate = (tid) => { const t = TPLS.find((x) => x.id === tid); if (t && !picked.find((p) => p.id === tid)) setPicked((p) => [...p, { id: tid, tid, name: t.name, group: t.group, kind: t.kind }]); };
-  const togglePick = (t) => { if (ro) return; setPicked((p) => p.find((x) => x.id === t.id) ? p.filter((x) => x.id !== t.id) : [...p, { id: t.id, tid: t.id, name: t.name, group: t.group, kind: t.kind }]); };
-  const addShot = () => setShots((s) => [...s, { id: "shot-" + Date.now() + "-" + Math.random().toString(36).slice(2, 7), label: "Ảnh tra cứu " + (s.length + 1), hue: [200, 150, 30, 280][s.length % 4] }]);
+  // Chụp ảnh THẬT (camera sau điện thoại) cho 1 dòng giấy tờ ở bước Bóc tách —
+  // tải lên ngay thành FileScan(GIAY_TO_DINH_KEM) gắn với hồ sơ, không chỉ giữ
+  // tạm ở state cục bộ, để bước In & chuyển sau này lấy đúng ảnh thật.
+  const [uploadingDoc, setUploadingDoc] = useStateA(null);
+  const captureForDoc = async (docId, file) => {
+    if (!hoSoId) return;
+    setUploadingDoc(docId);
+    try {
+      const fd = new FormData();
+      fd.append("loaiFile", "GIAY_TO_DINH_KEM");
+      fd.append("file", file);
+      const row = await window.VAApi.hoSo.fileScan(hoSoId, fd);
+      setOcr((arr) => arr.map((d) => d.id === docId ? { ...d, imageUrl: window.VAApi.apiBase + row.duongDan } : d));
+    } catch (e) {
+      setToast({ tone: "danger", title: "Không tải được ảnh", message: e.message || "Không rõ nguyên nhân" });
+    } finally {
+      setUploadingDoc(null);
+    }
+  };
+  const addTemplate = (tid) => { const t = TPLS.find((x) => x.id === tid); if (t && !picked.find((p) => p.id === tid)) setPicked((p) => [...p, { id: tid, tid, name: t.name, group: t.group, kind: t.kind, noiDung: t.noiDung }]); };
+  const togglePick = (t) => { if (ro) return; setPicked((p) => p.find((x) => x.id === t.id) ? p.filter((x) => x.id !== t.id) : [...p, { id: t.id, tid: t.id, name: t.name, group: t.group, kind: t.kind, noiDung: t.noiDung }]); };
+  // Ảnh chụp/tải màn hình tra cứu ngăn chặn — cũng tải lên thật ngay thành
+  // FileScan(ANH_TRA_CUU), không chỉ giữ tạm trong state như trước.
+  const [uploadingShot, setUploadingShot] = useStateA(false);
+  const captureShot = async (file) => {
+    if (!hoSoId) return;
+    setUploadingShot(true);
+    try {
+      const fd = new FormData();
+      fd.append("loaiFile", "ANH_TRA_CUU");
+      fd.append("file", file);
+      const row = await window.VAApi.hoSo.fileScan(hoSoId, fd);
+      setShots((s) => [...s, { id: row.id, label: "Ảnh tra cứu " + (s.length + 1), imageUrl: window.VAApi.apiBase + row.duongDan }]);
+    } catch (e) {
+      setToast({ tone: "danger", title: "Không tải được ảnh", message: e.message || "Không rõ nguyên nhân" });
+    } finally {
+      setUploadingShot(false);
+    }
+  };
   const allChecked = ocr.every((d) => checks[d.id]);
 
-  const canNext = step === 0 ? (customer.trim() && picked.length > 0) : step === 2 ? (allChecked && shots.length > 0) : true;
+  const canNext = step === 0 ? (customer.trim() && picked.length > 0)
+    : step === 2 ? (allChecked && (!traCuuBatBuoc(picked, activeFlows) || shots.length > 0))
+    : true;
   const addOptions = TPLS.filter((t) => !picked.find((p) => p.id === t.id));
 
   // Tạo hồ sơ thật trên server nếu phiên chưa có (chỉ gọi 1 lần — các lần sau
@@ -315,6 +408,9 @@ function FlowA({ density, session, onExit, onStatus, onMeta, mode, role, current
       await flushNoiDung(id);
       setToast({ title: "Đã lưu nháp", message: "Phiên " + session.id + " được lưu ở trạng thái nháp." });
       if (onStatus) onStatus("draft");
+      // Đã lưu thật xong — quay về Luồng tổng quan giống "Chuyển Thu ngân",
+      // trước đây bấm "Lưu nháp" cứ đứng nguyên màn dù đã lưu xong.
+      setTimeout(() => { onExit && onExit(); }, 900);
     } catch (e) {
       setToast({ tone: "danger", title: "Không lưu được nháp", message: e.message || "Không rõ nguyên nhân" });
     } finally {
@@ -418,7 +514,11 @@ function FlowA({ density, session, onExit, onStatus, onMeta, mode, role, current
             </Panel>
             <Panel title="Nhập thông tin giấy tờ" desc={ocr.length + " tài liệu · chưa có OCR thật, vui lòng nhập tay theo giấy tờ đang cầm"} pad={12} style={{ minHeight: 0 }}>
               <div style={{ overflowY: "auto", minHeight: 0, display: "flex", flexDirection: "column", gap: 10 }}>
-                {ocr.map((doc, i) => <P.EditableDoc key={doc.id} doc={doc} onField={setField} readOnly={ro} defaultOpen={i === 0} />)}
+                {ocr.map((doc, i) => (
+                  <P.EditableDoc key={doc.id} doc={doc} onField={setField} readOnly={ro} defaultOpen={i === 0}
+                    onCapture={!ro && role === "tknv" && vp === "mobile" ? captureForDoc : undefined}
+                    uploading={uploadingDoc === doc.id} />
+                ))}
               </div>
             </Panel>
           </div>
@@ -438,12 +538,18 @@ function FlowA({ density, session, onExit, onStatus, onMeta, mode, role, current
           </div>
         </Panel>
         <Panel title="Ảnh chụp tra cứu ngăn chặn" desc="Tải ảnh kết quả tra cứu để đính kèm hồ sơ">
-          <P.UploadZone files={shots} readOnly={ro} onAdd={addShot} onRemove={(id) => setShots((s) => s.filter((x) => x.id !== id))}
-            label="Tải ảnh chụp màn hình tra cứu" hint="Kết quả tra cứu ngăn chặn QSDĐ, toà án, đăng kiểm…" />
+          <P.UploadZone files={shots} readOnly={ro} onFile={captureShot} uploading={uploadingShot} onRemove={(id) => setShots((s) => s.filter((x) => x.id !== id))}
+            label="Chụp/tải ảnh chụp màn hình tra cứu" hint="Kết quả tra cứu ngăn chặn QSDĐ, toà án, đăng kiểm…" />
           {shots.length === 0 && !ro && (
-            <div style={{ display: "flex", alignItems: "center", gap: 8, fontSize: 12, color: "var(--text-warning)", padding: "8px 10px", background: "var(--bg-warning)", border: "1px solid var(--border-warning)", borderRadius: "var(--radius-md)" }}>
-              <L.AlertTriangle size={14} /> Cần đính kèm ít nhất 1 ảnh tra cứu để tiếp tục.
-            </div>
+            traCuuBatBuoc(picked, activeFlows) ? (
+              <div style={{ display: "flex", alignItems: "center", gap: 8, fontSize: 12, color: "var(--text-warning)", padding: "8px 10px", background: "var(--bg-warning)", border: "1px solid var(--border-warning)", borderRadius: "var(--radius-md)" }}>
+                <L.AlertTriangle size={14} /> Cần đính kèm ít nhất 1 ảnh tra cứu để tiếp tục.
+              </div>
+            ) : (
+              <div style={{ display: "flex", alignItems: "center", gap: 8, fontSize: 12, color: "var(--text-tertiary)", padding: "8px 10px", background: "var(--bg-overlay)", borderRadius: "var(--radius-md)" }}>
+                <L.Info size={14} /> Nhóm biểu mẫu này không bắt buộc ảnh tra cứu — có thể bỏ qua.
+              </div>
+            )
           )}
         </Panel>
       </div>
@@ -452,9 +558,12 @@ function FlowA({ density, session, onExit, onStatus, onMeta, mode, role, current
     body = <DraftWorkspace tabs={picked} ocrDocs={ocr} compact={compact} addOptions={addOptions} onAddTemplate={addTemplate} readOnly={ro} drafter={drafter}
       savedHtml={draftHtml} onContentChange={(tabId, html) => setDraftHtml((m) => ({ ...m, [tabId]: html }))} />;
   } else {
+    const ccvPhotos = sessionFiles.filter((f) => f.loaiFile === "ANH_CHUP_HIEN_TRUONG")
+      .map((f) => ({ id: f.id, label: "Ảnh CCV", hue: 260, imageUrl: window.VAApi.apiBase + f.duongDan }));
     body = (
       <window.VAPrintStep
-        picked={picked} scanImages={D.scanImages} shots={shots}
+        picked={picked} scanImages={buildPrintGroups(ocr)} shots={shots} ccvPhotos={ccvPhotos}
+        printDefaults={printDefaultsFor(picked, activeFlows)}
         cfgs={printCfgs} setCfgs={setPrintCfgs} ro={ro} saving={saving}
         drafter={drafter} setDrafterByName={setDrafterByName} drafterOptions={VS.VA_DRAFTERS} meName={meName}
         onPrint={finishDraft} draftHtml={draftHtml} onPrintNow={printNow}

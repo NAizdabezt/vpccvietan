@@ -10,18 +10,51 @@
    hướng dẫn từng bước cho nhân viên. */
 const { useState: useDz, useEffect: useEffDz, useRef: useRefDz, useMemo: useMemoDz } = React;
 
-// Vai trò phụ trách là RBAC thật đang gắn cứng trong nghiệp vụ — hiển thị để
-// người thiết kế biết, KHÔNG sửa được ở đây.
+// 7 bước CỐ ĐỊNH khớp đúng toàn bộ pipeline thật (đã gộp đúng theo backend —
+// "Cấp số & thu phí" là 1 API /cap-so duy nhất, "Số hóa & đẩy CMC" là 1 API
+// /finalize duy nhất, KHÔNG tách thêm vì thực tế không có ranh giới quyền/
+// trạng thái nào ở giữa). vaiTroMacDinh là vai trò RBAC thật đang gắn cứng
+// trong code backend (requireRole ở server/src/routes) — trường
+// "vaiTroPhuTrach" trong danhSachBuoc CHỈ để hiển thị rõ hơn trong thiết kế,
+// đổi giá trị này KHÔNG đổi quyền truy cập API thật.
 const FIXED_STEPS = [
-  { id: "khoi-tao", ten: "Khởi tạo phiên", icon: "FolderPlus", vaiTro: "TKNV" },
-  { id: "boc-tach", ten: "Bóc tách giấy tờ", icon: "ScanLine", vaiTro: "TKNV" },
-  { id: "tra-cuu", ten: "Tra cứu ngăn chặn", icon: "ShieldCheck", vaiTro: "TKNV · CCV" },
-  { id: "soan-thao", ten: "Soạn thảo", icon: "PenLine", vaiTro: "TKNV · CCV" },
-  { id: "in-chuyen", ten: "In & chuyển", icon: "Printer", vaiTro: "CCV" },
+  { id: "khoi-tao", ten: "Khởi tạo phiên", icon: "FolderPlus", vaiTroMacDinh: ["TKNV"] },
+  { id: "boc-tach", ten: "Bóc tách giấy tờ", icon: "ScanLine", vaiTroMacDinh: ["TKNV"] },
+  { id: "tra-cuu", ten: "Tra cứu ngăn chặn", icon: "ShieldCheck", vaiTroMacDinh: ["TKNV", "CCV"] },
+  { id: "soan-thao", ten: "Soạn thảo", icon: "PenLine", vaiTroMacDinh: ["TKNV", "CCV"] },
+  { id: "in-chuyen", ten: "In & chuyển", icon: "Printer", vaiTroMacDinh: ["CCV"] },
+  { id: "cap-so-thu-phi", ten: "Cấp số & thu phí", icon: "ReceiptText", vaiTroMacDinh: ["THU_NGAN"] },
+  { id: "so-hoa-day-cmc", ten: "Số hóa & đẩy CMC", icon: "Cloud", vaiTroMacDinh: ["LUU_TRU"] },
 ];
+const ROLE_OPTS = [
+  { key: "TKNV", label: "TKNV" },
+  { key: "CCV", label: "CCV" },
+  { key: "THU_NGAN", label: "Thu ngân" },
+  { key: "LUU_TRU", label: "Lưu trữ" },
+  { key: "KE_TOAN", label: "Kế toán" },
+];
+// 2 bước có điểm thông báo thật đã nối sẵn ở backend (server/src/lib/thong-bao.js
+// thongBaoBatBuoc) — tắt tickbox này thì hồ sơ chuyển bước vẫn diễn ra bình
+// thường, chỉ không gửi thông báo cho vai trò phụ trách bước đó nữa.
+const NOTIFY_STEP_IDS = ["cap-so-thu-phi", "so-hoa-day-cmc"];
 const DOC_ICONS = ["CreditCard", "ScrollText", "Car", "FileText", "Home", "Landmark"];
 const TRANG_THAI_LABEL = { NHAP: "Bản nháp", DANG_AP_DUNG: "Đang áp dụng", DA_LUU_TRU: "Đã lưu trữ" };
 const TRANG_THAI_TONE = { NHAP: "neutral", DANG_AP_DUNG: "success", DA_LUU_TRU: "info" };
+
+// Mặc định bật/tắt từng khối in ở bước "In & chuyển" — người soạn thảo vẫn
+// bật/tắt lại được cho TỪNG phiên ở printflow.jsx, đây chỉ là giá trị khởi tạo
+// chung theo nhóm biểu mẫu (đúng nguyên tắc "chung chung → Thiết kế luồng").
+const IN_MAC_DINH_KEYS = [
+  { key: "anhTraCuu", label: "Ảnh tra cứu ngăn chặn" },
+  { key: "giayToTuyThan", label: "Giấy tờ tùy thân" },
+  { key: "giayToTaiSan", label: "Giấy tờ tài sản" },
+  { key: "anhCcv", label: "Ảnh chụp công chứng viên" },
+];
+function defaultInMacDinh() {
+  const o = {};
+  IN_MAC_DINH_KEYS.forEach((k) => { o[k.key] = true; });
+  return o;
+}
 
 const NODE_W = 188, NODE_H = 92;
 function defaultLayout() {
@@ -31,7 +64,14 @@ function defaultLayout() {
 }
 function defaultDanhSachBuoc() {
   return {
-    buoc: FIXED_STEPS.map((s) => ({ id: s.id, ten: s.ten, moTa: "", slaPhut: null, viec: [], giayTo: s.id === "boc-tach" ? [] : undefined })),
+    buoc: FIXED_STEPS.map((s) => ({
+      id: s.id, ten: s.ten, moTa: "", slaPhut: null, viec: [],
+      vaiTroPhuTrach: [...s.vaiTroMacDinh],
+      giayTo: s.id === "boc-tach" ? [] : undefined,
+      yeuCauAnhTraCuu: s.id === "tra-cuu" ? true : undefined,
+      inMacDinh: s.id === "in-chuyen" ? defaultInMacDinh() : undefined,
+      thongBao: NOTIFY_STEP_IDS.includes(s.id) ? true : undefined,
+    })),
     layout: defaultLayout(),
   };
 }
@@ -52,7 +92,11 @@ function normDanhSach(danhSachBuoc) {
         moTa: found.moTa || "",
         slaPhut: typeof found.slaPhut === "number" ? found.slaPhut : null,
         viec: Array.isArray(found.viec) ? found.viec : [],
+        vaiTroPhuTrach: Array.isArray(found.vaiTroPhuTrach) && found.vaiTroPhuTrach.length ? found.vaiTroPhuTrach : [...s.vaiTroMacDinh],
         giayTo: s.id === "boc-tach" ? (found.giayTo || []) : undefined,
+        yeuCauAnhTraCuu: s.id === "tra-cuu" ? found.yeuCauAnhTraCuu !== false : undefined,
+        inMacDinh: s.id === "in-chuyen" ? { ...defaultInMacDinh(), ...(found.inMacDinh || {}) } : undefined,
+        thongBao: NOTIFY_STEP_IDS.includes(s.id) ? found.thongBao !== false : undefined,
       };
     }),
     layout,
@@ -142,7 +186,7 @@ function StepNode({ step, meta, pos, selected, editable, onSelect, onMove }) {
         </span>
         <div style={{ fontSize: 12.5, fontWeight: 700, lineHeight: 1.25 }}>{step.ten}</div>
       </div>
-      <div style={{ fontSize: 10.5, color: "var(--text-tertiary)" }}>Vai trò: {meta.vaiTro}</div>
+      <div style={{ fontSize: 10.5, color: "var(--text-tertiary)" }}>Vai trò: {(step.vaiTroPhuTrach || meta.vaiTroMacDinh).join(" · ")}</div>
       <div style={{ display: "flex", flexWrap: "wrap", gap: 4 }}>
         {typeof step.slaPhut === "number" && step.slaPhut > 0 && (
           <span style={{ fontSize: 10, fontWeight: 600, color: "var(--text-warning)", border: "1px solid var(--border-warning)", borderRadius: "var(--radius-full)", padding: "1px 7px" }}>SLA {step.slaPhut}′</span>
@@ -152,6 +196,9 @@ function StepNode({ step, meta, pos, selected, editable, onSelect, onMove }) {
         )}
         {nViec > 0 && (
           <span style={{ fontSize: 10, fontWeight: 600, color: "var(--text-success)", border: "1px solid var(--border-success)", borderRadius: "var(--radius-full)", padding: "1px 7px" }}>{nViec} việc</span>
+        )}
+        {NOTIFY_STEP_IDS.includes(step.id) && (
+          <span style={{ fontSize: 10, fontWeight: 600, color: step.thongBao !== false ? "var(--text-info)" : "var(--text-tertiary)", border: "1px solid " + (step.thongBao !== false ? "var(--border-info)" : "var(--border-default)"), borderRadius: "var(--radius-full)", padding: "1px 7px" }}>{step.thongBao !== false ? "Có thông báo" : "Tắt thông báo"}</span>
         )}
       </div>
     </div>
@@ -204,6 +251,15 @@ function StepConfigPanel({ step, meta, editable, onChange }) {
   const L = window.LucideReact;
   const { Input } = window.FSICheckinDesignSystem_019df8;
   const isDocStep = step.id === "boc-tach";
+  const isTraCuuStep = step.id === "tra-cuu";
+  const isInChuyenStep = step.id === "in-chuyen";
+  const isNotifyStep = NOTIFY_STEP_IDS.includes(step.id);
+
+  const toggleRole = (key) => {
+    const cur = step.vaiTroPhuTrach || [];
+    const next = cur.includes(key) ? cur.filter((r) => r !== key) : [...cur, key];
+    onChange({ ...step, vaiTroPhuTrach: next });
+  };
 
   const setViec = (vi, ten) => onChange({ ...step, viec: step.viec.map((v, i) => i === vi ? { ...v, ten } : v) });
   const addViec = () => onChange({ ...step, viec: [...(step.viec || []), { id: "viec_" + Math.random().toString(36).slice(2, 8), ten: "" }] });
@@ -222,8 +278,20 @@ function StepConfigPanel({ step, meta, editable, onChange }) {
     <div style={{ display: "flex", flexDirection: "column", gap: 14, minHeight: 0, overflowY: "auto", paddingRight: 2 }}>
       <div>
         <div style={{ fontSize: 14.5, fontWeight: 700 }}>{step.ten}</div>
-        <div style={{ fontSize: 11.5, color: "var(--text-tertiary)", marginTop: 2 }}>
-          Vai trò phụ trách: <b>{meta.vaiTro}</b> · cố định theo phân quyền thật, không đổi được ở đây.
+      </div>
+
+      <div style={{ display: "flex", flexDirection: "column", gap: 6 }}>
+        {secTitle("Vai trò phụ trách")}
+        <div style={{ display: "flex", flexWrap: "wrap", gap: "6px 14px" }}>
+          {ROLE_OPTS.map((r) => (
+            <label key={r.key} style={{ display: "flex", alignItems: "center", gap: 6, fontSize: 12.5, cursor: editable ? "pointer" : "default" }}>
+              <input type="checkbox" disabled={!editable} checked={(step.vaiTroPhuTrach || []).includes(r.key)} onChange={() => toggleRole(r.key)} />
+              {r.label}
+            </label>
+          ))}
+        </div>
+        <div style={{ fontSize: 11, color: "var(--text-tertiary)" }}>
+          Chỉ để hiển thị rõ hơn trong màn thiết kế — KHÔNG đổi quyền truy cập API thật (vẫn cố định theo code backend).
         </div>
       </div>
 
@@ -241,6 +309,18 @@ function StepConfigPanel({ step, meta, editable, onChange }) {
           onChange={(e) => onChange({ ...step, slaPhut: e.target.value === "" ? null : Math.max(0, Number(e.target.value) || 0) })}
           style={{ width: 180, fontFamily: "var(--font-sans)", fontSize: 12.5, color: "var(--text-primary)", background: editable ? "var(--bg-inset)" : "var(--bg-overlay)", border: "1px solid var(--border-default)", borderRadius: "var(--radius-md)", padding: "8px 10px", outline: "none" }} />
       </div>
+
+      {isNotifyStep && (
+        <div style={{ display: "flex", flexDirection: "column", gap: 6 }}>
+          {secTitle("Thông báo")}
+          <label style={{ display: "flex", alignItems: "center", gap: 8, fontSize: 12.5, cursor: editable ? "pointer" : "default" }}>
+            <input type="checkbox" disabled={!editable} checked={step.thongBao !== false}
+              onChange={(e) => onChange({ ...step, thongBao: e.target.checked })} />
+            Hiện thông báo cho {(step.vaiTroPhuTrach || meta.vaiTroMacDinh).join(", ")} khi hồ sơ tới bước này
+          </label>
+          <div style={{ fontSize: 11.5, color: "var(--text-tertiary)" }}>Tắt nếu nhóm biểu mẫu này không cần báo — hồ sơ vẫn chuyển bước bình thường, chỉ không gửi thông báo.</div>
+        </div>
+      )}
 
       <div style={{ display: "flex", flexDirection: "column", gap: 6 }}>
         {secTitle("Việc cần làm ở bước này")}
@@ -268,6 +348,31 @@ function StepConfigPanel({ step, meta, editable, onChange }) {
           </button>
         )}
       </div>
+
+      {isTraCuuStep && (
+        <div style={{ display: "flex", flexDirection: "column", gap: 6 }}>
+          {secTitle("Bắt buộc ảnh tra cứu")}
+          <label style={{ display: "flex", alignItems: "center", gap: 8, fontSize: 12.5, cursor: editable ? "pointer" : "default" }}>
+            <input type="checkbox" disabled={!editable} checked={step.yeuCauAnhTraCuu !== false}
+              onChange={(e) => onChange({ ...step, yeuCauAnhTraCuu: e.target.checked })} />
+            Yêu cầu ảnh chụp màn hình tra cứu trước khi qua bước tiếp theo
+          </label>
+          <div style={{ fontSize: 11.5, color: "var(--text-tertiary)" }}>Tắt nếu nhóm biểu mẫu này không cần tra cứu ngăn chặn (vd giấy ủy quyền đơn giản).</div>
+        </div>
+      )}
+
+      {isInChuyenStep && (
+        <div style={{ display: "flex", flexDirection: "column", gap: 6 }}>
+          {secTitle("Mặc định các khối in kèm (có thể bật/tắt lại theo từng phiên)")}
+          {IN_MAC_DINH_KEYS.map((k) => (
+            <label key={k.key} style={{ display: "flex", alignItems: "center", gap: 8, fontSize: 12.5, cursor: editable ? "pointer" : "default" }}>
+              <input type="checkbox" disabled={!editable} checked={(step.inMacDinh || {})[k.key] !== false}
+                onChange={(e) => onChange({ ...step, inMacDinh: { ...(step.inMacDinh || {}), [k.key]: e.target.checked } })} />
+              {k.label}
+            </label>
+          ))}
+        </div>
+      )}
 
       {isDocStep && (
         <div style={{ display: "flex", flexDirection: "column", gap: 10 }}>
@@ -497,7 +602,7 @@ function FlowDesigner({ onToast }) {
             )}
           </div>
           <div style={{ padding: "10px 12px", borderTop: "1px solid var(--border-subtle)", fontSize: 10.5, color: "var(--text-disabled)", display: "flex", alignItems: "flex-start", gap: 6 }}>
-            <L.Info size={12} style={{ marginTop: 1, flexShrink: 0 }} /> Trình tự 5 bước &amp; phân quyền cố định theo quy trình công chứng; kéo thả để bố trí sơ đồ, bấm vào bước để cấu hình nội dung.
+            <L.Info size={12} style={{ marginTop: 1, flexShrink: 0 }} /> Trình tự 7 bước &amp; quyền truy cập API thật cố định theo quy trình công chứng; kéo thả để bố trí sơ đồ, bấm vào bước để cấu hình nội dung.
           </div>
         </aside>
 
