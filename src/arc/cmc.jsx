@@ -68,7 +68,7 @@ function CMCScreen() {
         </div>
 
         {/* Số liệu */}
-        <div style={{ display: "grid", gridTemplateColumns: "repeat(4, 1fr)", gap: 12 }}>
+        <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(170px, 1fr))", gap: 12 }}>
           <StatCard label="Đã đẩy CMC" value={String(counts.synced)} icon={L.CheckCircle2} />
           <StatCard label="Đang xử lý / chờ thử lại" value={String(counts.queued)} icon={L.Clock} />
           <StatCard label="Lỗi đẩy" value={String(counts.error)} icon={L.AlertCircle} danger={counts.error > 0} />

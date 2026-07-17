@@ -17,7 +17,9 @@ const VA_NAV = [
 function Sidebar({ active, onNav, role, badges }) {
   const L = window.LucideReact;
   const b = badges || {};
+  const Shell = window.VAUi.SidebarShell; // màn hẹp: thu thành nút menu + drawer
   return (
+    <Shell>
     <aside style={{
       width: "var(--sidebar-width)", flexShrink: 0, background: "var(--bg-sidebar)",
       borderRight: "1px solid var(--border-subtle)", display: "flex", flexDirection: "column",
@@ -74,6 +76,7 @@ function Sidebar({ active, onNav, role, badges }) {
         Phiên bản demo · PH01
       </div>
     </aside>
+    </Shell>
   );
 }
 
@@ -102,18 +105,21 @@ function RolePill({ role, onChange }) {
 
 function Topbar({ title, role, onRole, onLogout, nv }) {
   const { ProfileButton, VA_PROFILES, profileForNv } = window.VASessions;
+  const vp = window.VAUi.useViewport();
   // Ưu tiên đúng nhân viên đang đăng nhập thật; chỉ rơi về mock nếu vì lý do gì
   // đó chưa có nv (không nên xảy ra vì trang đã chặn !authed từ trước).
   const profile = profileForNv(nv) || (role === "ccv" ? VA_PROFILES["viet.nq"] : VA_PROFILES["linh.tt"]);
   return (
     <header style={{
       height: "var(--topbar-height)", flexShrink: 0, display: "flex", alignItems: "center",
-      justifyContent: "space-between", padding: "0 20px", borderBottom: "1px solid var(--border-subtle)",
+      justifyContent: "space-between", padding: window.VAUi.topbarPad(vp), borderBottom: "1px solid var(--border-subtle)",
       background: "var(--bg-base)",
     }}>
-      <div style={{ fontSize: 14 }}>
-        <span style={{ color: "var(--text-tertiary)" }}>VPCC Việt An</span>
-        <span style={{ color: "var(--text-tertiary)", margin: "0 6px" }}>/</span>
+      <div style={{ fontSize: 14, whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" }}>
+        {vp !== "mobile" && <>
+          <span style={{ color: "var(--text-tertiary)" }}>VPCC Việt An</span>
+          <span style={{ color: "var(--text-tertiary)", margin: "0 6px" }}>/</span>
+        </>}
         <span style={{ color: "var(--text-primary)", fontWeight: 500 }}>{title || "Màn hình soạn thảo"}</span>
       </div>
       <div style={{ display: "flex", alignItems: "center", gap: 14 }}>
@@ -143,7 +149,7 @@ function SessionBar({ session }) {
   const Sep = () => <span style={{ width: 1, height: 26, background: "var(--border-subtle)" }} />;
   const types = (s.types && s.types.join(", ")) || "Phiên mới";
   return (
-    <div style={{ display: "flex", alignItems: "center", gap: 18, padding: "10px 20px", background: "var(--bg-surface)", borderBottom: "1px solid var(--border-default)" }}>
+    <div style={{ display: "flex", alignItems: "center", gap: "10px 18px", padding: "10px 20px", background: "var(--bg-surface)", borderBottom: "1px solid var(--border-default)", flexWrap: "wrap" }}>
       <Chip icon="Hash" label="Mã phiên" value={s.id || "—"} mono />
       <Sep />
       <Chip icon="User" label="Khách hàng" value={s.customer || "Chưa nhập"} />

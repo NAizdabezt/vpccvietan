@@ -87,7 +87,7 @@ function EditableDoc({ doc, onField, defaultOpen, readOnly }) {
         <L.ChevronDown size={15} color="var(--text-tertiary)" style={{ transform: open ? "rotate(180deg)" : "none", transition: "transform .15s" }} />
       </div>
       {open && (
-        <div style={{ borderTop: "1px solid var(--border-subtle)", padding: "10px 12px", display: "grid", gridTemplateColumns: "1fr 1fr", gap: "10px 12px" }}>
+        <div style={{ borderTop: "1px solid var(--border-subtle)", padding: "10px 12px", display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(200px, 1fr))", gap: "10px 12px" }}>
           {doc.fields.map((f, fi) => (
             <label key={f.label} style={{ minWidth: 0, display: "flex", flexDirection: "column", gap: 4 }}>
               <span style={{ fontSize: 10.5, color: "var(--text-tertiary)", textTransform: "uppercase", letterSpacing: ".04em", fontWeight: 600, display: "flex", alignItems: "center", gap: 4 }}>

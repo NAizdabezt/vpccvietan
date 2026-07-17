@@ -38,7 +38,7 @@ function WarehouseMap({ onPick }) {
             <span style={{ fontSize: 13, fontWeight: 600 }}>Kệ {sh}</span>
             <span style={{ fontSize: 11.5, color: "var(--text-tertiary)" }}>· {boxesPerShelf} hộp</span>
           </div>
-          <div style={{ display: "grid", gridTemplateColumns: "repeat(8, 1fr)", gap: 10, padding: 14 }}>
+          <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fill, minmax(110px, 1fr))", gap: 10, padding: 14 }}>
             {[...Array(boxesPerShelf)].map((_, i) => {
               const id = sh + "-" + (i + 1);
               const meta = boxState[id] || {};

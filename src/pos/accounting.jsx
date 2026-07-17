@@ -44,7 +44,7 @@ function ReconScreen() {
           <Button variant="secondary" icon={L.Download}>Xuất Excel</Button>
         </div>
 
-        <div style={{ display: "grid", gridTemplateColumns: "repeat(4,1fr)", gap: 12 }}>
+        <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(170px, 1fr))", gap: 12 }}>
           <MiniStat label="Tổng thu" value={fmtVND(cash + transfer)} />
           <MiniStat label="Tiền mặt" value={fmtVND(cash)} tone="cash" />
           <MiniStat label="Chuyển khoản" value={fmtVND(transfer)} tone="transfer" />
@@ -268,7 +268,7 @@ function InvoiceScreen() {
         )}
 
         {/* Thống kê — bấm để lọc */}
-        <div style={{ display: "grid", gridTemplateColumns: "repeat(4,1fr)", gap: 12 }}>
+        <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(170px, 1fr))", gap: 12 }}>
           <Stat icon="Clock" label="Chờ xuất" value={pending.length} c="#d97706" active={filter === "pending"} onClick={() => setFilter(filter === "pending" ? "all" : "pending")} />
           <Stat icon="AlertTriangle" label="Quá hạn (chậm > 1 ngày)" value={overdue.length} c="#dc2626" active={filter === "overdue"} onClick={() => setFilter(filter === "overdue" ? "all" : "overdue")} />
           <Stat icon="CheckCircle2" label="Đã đẩy hôm nay" value={issuedToday.length} c="#16a34a" active={filter === "issued"} onClick={() => setFilter(filter === "issued" ? "all" : "issued")} />

@@ -1090,8 +1090,8 @@ function SessionTable({ title, icon, accent, items, ...rowProps }) {
         <h2 style={{ fontSize: 14, fontWeight: 700, margin: 0, color: accent || "var(--text-primary)" }}>{title}</h2>
         <span style={{ fontSize: 12.5, color: "var(--text-tertiary)" }}>· {items.length} phiên</span>
       </div>
-      <div style={{ border: "1px solid var(--border-default)", borderRadius: "var(--radius-lg)", overflow: "hidden", background: "var(--bg-surface)" }}>
-        <table style={{ width: "100%", borderCollapse: "collapse" }}>
+      <div style={{ border: "1px solid var(--border-default)", borderRadius: "var(--radius-lg)", background: "var(--bg-surface)", overflowX: "auto" }}>
+        <table style={{ width: "100%", minWidth: 680, borderCollapse: "collapse" }}>
           <thead><tr style={{ background: "var(--bg-elevated)", borderBottom: "1px solid var(--border-subtle)" }}>
             {["Mã phiên", "Khách hàng", "Biểu mẫu", "CCV phụ trách", "Trạng thái", ""].map((h, i) => <th key={i} style={th}>{h}</th>)}
           </tr></thead>
@@ -1290,7 +1290,7 @@ function OverviewScreen({ role, currentUser, canCreate, canAttach, canCapture, c
         </div>
 
         {/* Số liệu */}
-        <div style={{ display: "grid", gridTemplateColumns: "repeat(5, 1fr)", gap: 12 }}>
+        <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(160px, 1fr))", gap: 12 }}>
           <SummaryCard icon="AlertTriangle" label="Tồn đọng từ hôm trước" value={carryCount} c={CARRYOVER_C} />
           <SummaryCard icon="Loader" label="Đang xử lý" value={processingCount} c="#d97706" />
           <SummaryCard icon="Paperclip" label="Chờ gắn file" value={attachCount} c="#0891b2" />
@@ -1470,8 +1470,8 @@ function CompletedScreen({ role, currentUser: currentUserProp }) {
             <div style={{ fontSize: 13.5 }}>Không tìm thấy hồ sơ hoàn thành khớp “{q.trim()}”.</div>
           </div>
         ) : (
-          <div style={{ border: "1px solid var(--border-default)", borderRadius: "var(--radius-lg)", overflow: "hidden", background: "var(--bg-surface)" }}>
-            <table style={{ width: "100%", borderCollapse: "collapse" }}>
+          <div style={{ border: "1px solid var(--border-default)", borderRadius: "var(--radius-lg)", overflow: "hidden", background: "var(--bg-surface)", overflowX: "auto" }}>
+            <table style={{ width: "100%", minWidth: 760, borderCollapse: "collapse" }}>
               <thead><tr style={{ background: "var(--bg-elevated)", borderBottom: "1px solid var(--border-subtle)" }}>
                 {["Mã phiên", "Khách hàng", "Biểu mẫu", "Số công chứng", "CCV", "Hoàn thành", ""].map((h, i) => <th key={i} style={th}>{h}</th>)}
               </tr></thead>

@@ -51,7 +51,7 @@ function RecordCard({ customer, onReuse }) {
       {open && (
         <div style={{ borderTop: "1px solid var(--border-subtle)", padding: "11px 12px" }}>
           {info.length > 0 && (
-            <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: "8px 12px", marginBottom: hoSos.length ? 12 : 0 }}>
+            <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(190px, 1fr))", gap: "8px 12px", marginBottom: hoSos.length ? 12 : 0 }}>
               {info.map((m, i) => (
                 <div key={i} style={{ minWidth: 0 }}>
                   <div style={{ fontSize: 10, color: "var(--text-tertiary)", textTransform: "uppercase", letterSpacing: ".04em", fontWeight: 600 }}>{m.k}</div>

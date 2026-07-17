@@ -266,7 +266,7 @@ function ScanScreen() {
           <p style={{ fontSize: 13.5, color: "var(--text-tertiary)", margin: "2px 0 0" }}>Phiên đã thu phí &amp; cấp số · gán CCV ký, quét bản giấy rồi đẩy CMC ngay khi file đã sẵn sàng — không tách rời thành 2 bước</p>
         </div>
 
-        <div style={{ display: "grid", gridTemplateColumns: "repeat(3, 1fr)", gap: 12 }}>
+        <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(200px, 1fr))", gap: 12 }}>
           <StatCard label="Chờ số hóa & đẩy CMC" value={String(queue.length)} icon={L.ScanLine} />
           <StatCard label="Đã đẩy CMC hôm nay" value={"52"} icon={L.CloudUpload} />
           <StatCard label="Quá hạn nộp lưu" value={"3"} icon={L.AlertTriangle} danger />

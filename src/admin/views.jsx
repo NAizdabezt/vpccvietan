@@ -62,18 +62,19 @@ function typeLegend() {
 function OverviewView({ range }) {
   const D = window.ADMIN_DATA, PAL = window.ADMIN_PAL;
   const C = window.AdminCharts;
+  const vp = window.VAUi.useViewport();
   const k = D.kpis[range];
   const mixSeg = D.serviceMix.map((s, i) => ({ ...s, color: PAL[i % PAL.length] }));
   const topTknv = [...D.tknv].slice(0, 5).map((t, i) => ({ label: t.name, value: t.total, color: PAL[0] }));
   return (
     <div style={{ display: "flex", flexDirection: "column", gap: 16 }}>
-      <div style={{ display: "grid", gridTemplateColumns: "repeat(4,1fr)", gap: 14 }}>
+      <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(170px, 1fr))", gap: 14 }}>
         <KpiCard icon="FileCheck2" label="Hồ sơ xử lý" value={k.hoso.toLocaleString("vi-VN")} delta={k.dHoso} />
         <KpiCard icon="Wallet" label="Doanh thu" value={fmtVnd(k.revenue)} delta={k.dRev} />
         <KpiCard icon="UserCheck" label="CCV hoạt động" value={k.ccv} sub={"· " + k.tknv + " TKNV"} />
         <KpiCard icon="Timer" label="TG xử lý TB" value={k.avgMin} sub="phút/hồ sơ" />
       </div>
-      <div style={{ display: "grid", gridTemplateColumns: "1.5fr 1fr", gap: 16 }}>
+      <div style={{ display: "grid", gridTemplateColumns: vp !== "desktop" ? "1fr" : "1.5fr 1fr", gap: 16 }}>
         <Card title="Doanh thu theo thời gian" desc="Triệu đồng · cập nhật real-time">
           <C.LineArea points={D.revenueSeries[range]} color={PAL[0]} unit="triệu đ" />
         </Card>
@@ -151,7 +152,7 @@ function FinanceView({ range }) {
   const paySeg = D.payments.map((p, i) => ({ ...p, color: payColors[i] }));
   return (
     <div style={{ display: "flex", flexDirection: "column", gap: 16 }}>
-      <div style={{ display: "grid", gridTemplateColumns: "repeat(3,1fr)", gap: 14 }}>
+      <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(220px, 1fr))", gap: 14 }}>
         <KpiCard icon="Wallet" label="Doanh thu" value={fmtVnd(k.revenue)} delta={k.dRev} />
         <KpiCard icon="Banknote" label="Đã thực thu" value={fmtVnd(Math.round(k.revenue * 0.92))} sub="92%" />
         <KpiCard icon="Clock" label="Công nợ" value={fmtVnd(Math.round(k.revenue * 0.08))} sub="8%" />

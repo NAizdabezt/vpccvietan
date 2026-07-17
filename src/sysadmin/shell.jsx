@@ -18,7 +18,9 @@ const SA_TITLES = {
 
 function SaSidebar({ active, onNav }) {
   const L = window.LucideReact;
+  const Shell = window.VAUi.SidebarShell;
   return (
+    <Shell>
     <aside style={{ width: "var(--sidebar-width)", flexShrink: 0, background: "var(--bg-sidebar)", borderRight: "1px solid var(--border-subtle)", display: "flex", flexDirection: "column" }}>
       <div style={{ height: "var(--topbar-height)", display: "flex", alignItems: "center", gap: 10, padding: "0 16px", borderBottom: "1px solid var(--border-subtle)" }}>
         <img src="assets/logo-fsi.png" alt="FSI" style={{ height: 26, width: "auto" }} />
@@ -52,22 +54,26 @@ function SaSidebar({ active, onNav }) {
         <div style={{ fontSize: 11, color: "var(--text-disabled)", marginTop: 6 }}>Phiên bản demo · PH05</div>
       </div>
     </aside>
+    </Shell>
   );
 }
 
 function SaTopbar({ active, onLogout, nv }) {
   const { ProfileButton, profileForNv } = window.VASessions;
+  const vp = window.VAUi.useViewport();
   const D = window.SA_DATA;
   const profile = profileForNv(nv) || D.admin;
   return (
-    <header style={{ height: "var(--topbar-height)", flexShrink: 0, display: "flex", alignItems: "center", justifyContent: "space-between", padding: "0 20px", borderBottom: "1px solid var(--border-subtle)", background: "var(--bg-base)" }}>
-      <div style={{ fontSize: 14 }}>
-        <span style={{ color: "var(--text-tertiary)" }}>VPCC Việt An</span>
-        <span style={{ color: "var(--text-tertiary)", margin: "0 6px" }}>/</span>
+    <header style={{ height: "var(--topbar-height)", flexShrink: 0, display: "flex", alignItems: "center", justifyContent: "space-between", padding: window.VAUi.topbarPad(vp), borderBottom: "1px solid var(--border-subtle)", background: "var(--bg-base)" }}>
+      <div style={{ fontSize: 14, whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" }}>
+        {vp !== "mobile" && <>
+          <span style={{ color: "var(--text-tertiary)" }}>VPCC Việt An</span>
+          <span style={{ color: "var(--text-tertiary)", margin: "0 6px" }}>/</span>
+        </>}
         <span style={{ color: "var(--text-primary)", fontWeight: 500 }}>{SA_TITLES[active]}</span>
       </div>
       <div style={{ display: "flex", alignItems: "center", gap: 14 }}>
-        <span style={{ display: "inline-flex", alignItems: "center", gap: 6, fontSize: 12, fontWeight: 600, padding: "4px 10px", borderRadius: "var(--radius-full)", background: "var(--accent-muted)", color: "var(--accent-hover)" }}>Quản trị viên</span>
+        {vp !== "mobile" && <span style={{ display: "inline-flex", alignItems: "center", gap: 6, fontSize: 12, fontWeight: 600, padding: "4px 10px", borderRadius: "var(--radius-full)", background: "var(--accent-muted)", color: "var(--accent-hover)" }}>Quản trị viên</span>}
         <window.VASessions.NotificationBell />
         <ProfileButton profile={profile} onLogout={onLogout} />
       </div>

@@ -25,7 +25,9 @@ const POS_TITLES = { overview: "Luồng tổng quan", completed: "Hồ sơ hoàn
 function PosSidebar({ active, onNav, role }) {
   const L = window.LucideReact;
   const nav = POS_NAV[role] || POS_NAV.cashier;
+  const Shell = window.VAUi.SidebarShell;
   return (
+    <Shell>
     <aside style={{ width: "var(--sidebar-width)", flexShrink: 0, background: "var(--bg-sidebar)", borderRight: "1px solid var(--border-subtle)", display: "flex", flexDirection: "column" }}>
       <div style={{ height: "var(--topbar-height)", display: "flex", alignItems: "center", gap: 10, padding: "0 16px", borderBottom: "1px solid var(--border-subtle)" }}>
         <img src="assets/logo-fsi.png" alt="FSI" style={{ height: 26, width: "auto" }} />
@@ -58,6 +60,7 @@ function PosSidebar({ active, onNav, role }) {
       </nav>
       <div style={{ padding: 12, borderTop: "1px solid var(--border-subtle)", fontSize: 11, color: "var(--text-disabled)" }}>Phiên bản demo · PH02</div>
     </aside>
+    </Shell>
   );
 }
 
@@ -66,18 +69,21 @@ function PosTopbar({ active, role, onLogout, nv }) {
   const profile = profileForNv(nv) || (role === "acct" ? VA_PROFILES["ke.dv"] : VA_PROFILES["ha.ptt"]);
   const roleLabel = role === "acct" ? "Kế toán" : "Thu ngân";
   const todayDMY = VA_TODAY.split("-").reverse().join("/");
+  const vp = window.VAUi.useViewport();
   return (
-    <header style={{ height: "var(--topbar-height)", flexShrink: 0, display: "flex", alignItems: "center", justifyContent: "space-between", padding: "0 20px", borderBottom: "1px solid var(--border-subtle)", background: "var(--bg-base)" }}>
-      <div style={{ fontSize: 14 }}>
-        <span style={{ color: "var(--text-tertiary)" }}>VPCC Việt An</span>
-        <span style={{ color: "var(--text-tertiary)", margin: "0 6px" }}>/</span>
+    <header style={{ height: "var(--topbar-height)", flexShrink: 0, display: "flex", alignItems: "center", justifyContent: "space-between", padding: window.VAUi.topbarPad(vp), borderBottom: "1px solid var(--border-subtle)", background: "var(--bg-base)" }}>
+      <div style={{ fontSize: 14, whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" }}>
+        {vp !== "mobile" && <>
+          <span style={{ color: "var(--text-tertiary)" }}>VPCC Việt An</span>
+          <span style={{ color: "var(--text-tertiary)", margin: "0 6px" }}>/</span>
+        </>}
         <span style={{ color: "var(--text-primary)", fontWeight: 500 }}>{POS_TITLES[active]}</span>
-        <span style={{ color: "var(--text-tertiary)", marginLeft: 12, fontSize: 12.5 }}>{todayDMY}</span>
+        {vp !== "mobile" && <span style={{ color: "var(--text-tertiary)", marginLeft: 12, fontSize: 12.5 }}>{todayDMY}</span>}
       </div>
       <div style={{ display: "flex", alignItems: "center", gap: 14 }}>
-        <span style={{ display: "inline-flex", alignItems: "center", gap: 6, fontSize: 12, fontWeight: 600, padding: "4px 11px", borderRadius: "var(--radius-full)", background: "var(--accent-muted)", color: "var(--accent-hover)" }}>
+        {vp !== "mobile" && <span style={{ display: "inline-flex", alignItems: "center", gap: 6, fontSize: 12, fontWeight: 600, padding: "4px 11px", borderRadius: "var(--radius-full)", background: "var(--accent-muted)", color: "var(--accent-hover)" }}>
           {roleLabel}
-        </span>
+        </span>}
         <window.VASessions.NotificationBell />
         <ProfileButton profile={profile} onLogout={onLogout} />
       </div>
@@ -106,7 +112,7 @@ function StatStrip() {
   ];
 
   return (
-    <div style={{ display: "grid", gridTemplateColumns: "repeat(4, 1fr)", gap: 12 }}>
+    <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(160px, 1fr))", gap: 12 }}>
       {stats.map((s) => (
         <StatCard key={s.label} label={s.label} value={s.value} icon={L[s.icon]} danger={s.tone === "danger"} />
       ))}

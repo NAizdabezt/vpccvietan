@@ -221,8 +221,9 @@ function PrintStep({ picked, scanImages, shots, cfgs, setCfgs, ro, onPrint, savi
     totalAttach += groups.reduce((s, g) => s + sheetsForGroup(cfg, g.type, g.imgs), 0) + (cfg.shotsOn ? shots.length : 0);
   });
 
+  const vpPf = window.VAUi.useViewport();
   return (
-    <div style={{ display: "grid", gridTemplateColumns: "1.35fr 1fr", gap: 16, alignItems: "start" }}>
+    <div style={{ display: "grid", gridTemplateColumns: vpPf !== "desktop" ? "1fr" : "1.35fr 1fr", gap: 16, alignItems: "start" }}>
       <div style={{ display: "flex", flexDirection: "column", gap: 12 }}>
         {/* Người soạn & ký tự định danh in cuối văn bản */}
         <section style={{ border: "1px solid var(--border-default)", borderRadius: "var(--radius-lg)", background: "var(--bg-surface)", padding: 14, display: "flex", flexDirection: "column", gap: 10 }}>

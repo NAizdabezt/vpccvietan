@@ -82,8 +82,10 @@ function StepGuide({ guide }) {
 
 function Stepper({ step, setStep, maxReached }) {
   const L = window.LucideReact;
+  const vp = window.VAUi.useViewport();
+  const tiny = vp === "mobile"; // mobile: chỉ hiện nhãn của bước đang đứng, các bước khác thu về icon
   return (
-    <div style={{ display: "flex", alignItems: "center", padding: "14px 4px" }}>
+    <div style={{ display: "flex", alignItems: "center", padding: "14px 4px", overflowX: "auto" }}>
       {VA_STEPS.map((s, i) => {
         const Icon = L[s.icon];
         const done = i < step, on = i === step;
@@ -93,7 +95,7 @@ function Stepper({ step, setStep, maxReached }) {
           <React.Fragment key={s.id}>
             <button type="button" disabled={!reachable} onClick={() => reachable && setStep(i)} style={{
               display: "flex", alignItems: "center", gap: 8, border: "none", background: "transparent",
-              cursor: reachable ? "pointer" : "not-allowed", padding: 0, fontFamily: "var(--font-sans)", opacity: reachable ? 1 : .55,
+              cursor: reachable ? "pointer" : "not-allowed", padding: 0, fontFamily: "var(--font-sans)", opacity: reachable ? 1 : .55, flexShrink: 0,
             }}>
               <span style={{
                 width: 28, height: 28, borderRadius: "50%", display: "grid", placeItems: "center",
@@ -101,9 +103,9 @@ function Stepper({ step, setStep, maxReached }) {
                 color: on ? "#fff" : done ? "var(--text-success)" : "var(--text-tertiary)",
                 border: on ? "none" : "1px solid " + (done ? "var(--border-success)" : "var(--border-default)"), flexShrink: 0,
               }}>{done ? <L.Check size={15} /> : <Icon size={14} />}</span>
-              <span style={{ fontSize: 13, fontWeight: on ? 600 : 500, color }}>{s.label}</span>
+              {(!tiny || on) && <span style={{ fontSize: 13, fontWeight: on ? 600 : 500, color, whiteSpace: "nowrap" }}>{s.label}</span>}
             </button>
-            {i < VA_STEPS.length - 1 && <span style={{ flex: 1, height: 2, margin: "0 12px", borderRadius: 1, background: i < step ? "var(--border-success)" : "var(--border-subtle)" }} />}
+            {i < VA_STEPS.length - 1 && <span style={{ flex: 1, minWidth: tiny ? 10 : 24, height: 2, margin: tiny ? "0 6px" : "0 12px", borderRadius: 1, background: i < step ? "var(--border-success)" : "var(--border-subtle)" }} />}
           </React.Fragment>
         );
       })}
@@ -344,11 +346,14 @@ function FlowA({ density, session, onExit, onStatus, onMeta, mode, role, current
     }
   };
 
+  const vp = window.VAUi.useViewport();
+  const narrow = vp !== "desktop"; // màn hẹp: các bố cục 2 cột xếp chồng 1 cột
+
   let body;
   if (step === 0) {
     const { ReturningSearch } = window.VALookup;
     body = (
-      <div style={{ display: "grid", gridTemplateColumns: "minmax(0,1fr) minmax(0,0.82fr)", gap: 16, maxWidth: 1180, width: "100%", margin: "0 auto", alignItems: "start" }}>
+      <div style={{ display: "grid", gridTemplateColumns: narrow ? "1fr" : "minmax(0,1fr) minmax(0,0.82fr)", gap: 16, maxWidth: 1180, width: "100%", margin: "0 auto", alignItems: "start" }}>
         <Panel title="Khởi tạo phiên giao dịch" desc="Nhập tên khách hàng và chọn biểu mẫu — hệ thống tự sinh Mã phiên giao dịch.">
           <div style={{ display: "flex", alignItems: "center", gap: 10, padding: "10px 12px", background: "var(--accent-muted)", border: "1px solid var(--accent-border)", borderRadius: "var(--radius-md)" }}>
             <L.Hash size={16} color="var(--accent)" />
@@ -365,7 +370,7 @@ function FlowA({ density, session, onExit, onStatus, onMeta, mode, role, current
             <div style={{ fontSize: 12, fontWeight: 600, color: "var(--text-secondary)", marginBottom: 8, display: "flex", alignItems: "center", gap: 6 }}>
               Biểu mẫu soạn thảo <span style={{ fontSize: 11, fontWeight: 500, color: "var(--text-tertiary)" }}>· chọn một hoặc nhiều · đã chọn {picked.length}</span>
             </div>
-            <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 10 }}>
+            <div style={{ display: "grid", gridTemplateColumns: vp === "mobile" ? "1fr" : "1fr 1fr", gap: 10 }}>
               {TPLS.map((tpl) => {
                 const on = !!picked.find((p) => p.id === tpl.id);
                 return (
@@ -405,8 +410,8 @@ function FlowA({ density, session, onExit, onStatus, onMeta, mode, role, current
             </div>
           </div>
         ) : (
-          <div style={{ flex: 1, display: "grid", gridTemplateColumns: "300px 1fr", gap: 16, minHeight: 0 }}>
-            <Panel title="Ảnh tài liệu" desc={D.scanImages.length + " ảnh"} pad={10} style={{ minHeight: 0 }}>
+          <div style={{ flex: 1, display: "grid", gridTemplateColumns: narrow ? "1fr" : "300px 1fr", gap: 16, minHeight: 0 }}>
+            <Panel title="Ảnh tài liệu" desc={D.scanImages.length + " ảnh"} pad={10} style={{ minHeight: 0, maxHeight: narrow ? 220 : undefined }}>
               <div style={{ overflowY: "auto", minHeight: 0 }}>
                 <P.ScanGallery images={D.scanImages} activeId={activeImg} onSelect={() => {}} />
               </div>
@@ -422,7 +427,7 @@ function FlowA({ density, session, onExit, onStatus, onMeta, mode, role, current
     );
   } else if (step === 2) {
     body = (
-      <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 16, alignItems: "start", minHeight: 0 }}>
+      <div style={{ display: "grid", gridTemplateColumns: narrow ? "1fr" : "1fr 1fr", gap: 16, alignItems: "start", minHeight: 0 }}>
         <Panel title="Đối chiếu tài liệu" desc={"Tích xác nhận đã kiểm tra · " + Object.values(checks).filter(Boolean).length + "/" + ocr.length} pad={0}>
           <div>
             {ocr.map((doc) => <P.CheckDocRow key={doc.id} doc={doc} checked={!!checks[doc.id]} onToggle={() => { if (!ro) setChecks((c) => ({ ...c, [doc.id]: !c[doc.id] })); }} />)}

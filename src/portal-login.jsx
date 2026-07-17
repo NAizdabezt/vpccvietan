@@ -36,6 +36,8 @@ const DEMO_PW = "Vietan@2026";
 function PortalLogin() {
   const L = window.LucideReact;
   const { Button, Input, Checkbox } = window.FSICheckinDesignSystem_019df8;
+  const vp = window.VAUi.useViewport();
+  const stacked = vp !== "desktop"; // màn hẹp: brand panel thu gọn thành dải trên, form full width
   const [user, setUser] = useStatePL("");
   const [pw, setPw] = useStatePL("");
   const [show, setShow] = useStatePL(false);
@@ -99,54 +101,68 @@ function PortalLogin() {
   };
 
   return (
-    <div style={{ display: "grid", gridTemplateColumns: "minmax(0,460px) minmax(0,1fr)", height: "100%", fontFamily: "var(--font-sans)" }}>
-      {/* Brand panel */}
+    <div style={{
+      display: "grid", gridTemplateColumns: stacked ? "1fr" : "minmax(0,460px) minmax(0,1fr)",
+      gridTemplateRows: stacked ? "auto 1fr" : "1fr",
+      height: "100%", overflowY: stacked ? "auto" : "hidden", fontFamily: "var(--font-sans)",
+    }}>
+      {/* Brand panel — màn hẹp thu thành dải hero gọn phía trên */}
       <div style={{
-        position: "relative", overflow: "hidden", color: "#fff", padding: "44px 40px",
+        position: "relative", overflow: "hidden", color: "#fff",
+        padding: stacked ? "18px 20px" : "44px 40px",
         display: "flex", flexDirection: "column",
         background: "radial-gradient(620px 380px at 16% 12%, rgba(46,49,146,.55), transparent 60%), radial-gradient(560px 420px at 92% 96%, rgba(37,99,235,.40), transparent 58%), var(--fsi-ink)",
       }}>
         <div style={{ display: "flex", alignItems: "center", gap: 12 }}>
           <div style={{ background: "#fff", borderRadius: 12, padding: "8px 12px", display: "inline-flex" }}>
-            <img src="assets/logo-fsi.png" alt="FSI" style={{ height: 28, width: "auto" }} />
+            <img src="assets/logo-fsi.png" alt="FSI" style={{ height: stacked ? 22 : 28, width: "auto" }} />
           </div>
           <div style={{ lineHeight: 1.15 }}>
-            <div style={{ fontSize: 16, fontWeight: 700 }}>Công chứng số</div>
+            <div style={{ fontSize: stacked ? 14.5 : 16, fontWeight: 700 }}>Công chứng số</div>
             <div style={{ fontSize: 12, color: "rgba(255,255,255,.62)" }}>VPCC Việt An</div>
           </div>
+          {stacked && (
+            <div style={{ marginLeft: "auto", fontSize: 12, color: "rgba(255,255,255,.7)", textAlign: "right" }}>
+              Nền tảng nghiệp vụ<br />công chứng một cửa
+            </div>
+          )}
         </div>
 
-        <div style={{ marginTop: "auto", marginBottom: "auto", paddingTop: 36 }}>
-          <h1 style={{ fontSize: 27, fontWeight: 700, lineHeight: 1.25, margin: 0, letterSpacing: "-.01em" }}>
-            Nền tảng nghiệp vụ<br />công chứng một cửa
-          </h1>
-          <p style={{ fontSize: 14, color: "rgba(255,255,255,.66)", margin: "14px 0 28px", lineHeight: 1.6, maxWidth: 340 }}>
-            Một tài khoản duy nhất — hệ thống tự định tuyến bạn vào đúng phân hệ theo phân quyền.
-          </p>
-          <div style={{ display: "flex", flexDirection: "column", gap: 14 }}>
-            {[{ icon: "ScanLine", t: "Bóc tách OCR đa tài liệu & VNeID" },
-              { icon: "ShieldCheck", t: "Tra cứu ngăn chặn tự động" },
-              { icon: "Workflow", t: "Định tuyến liên thông một cửa" }].map((f) => {
-              const Icon = L[f.icon];
-              return (
-                <div key={f.t} style={{ display: "flex", alignItems: "center", gap: 12, fontSize: 13.5, color: "rgba(255,255,255,.86)" }}>
-                  <span style={{ width: 32, height: 32, borderRadius: 9, background: "rgba(255,255,255,.10)", display: "grid", placeItems: "center", flexShrink: 0 }}>
-                    <Icon size={16} />
-                  </span>
-                  {f.t}
-                </div>
-              );
-            })}
+        {!stacked && (
+          <div style={{ marginTop: "auto", marginBottom: "auto", paddingTop: 36 }}>
+            <h1 style={{ fontSize: 27, fontWeight: 700, lineHeight: 1.25, margin: 0, letterSpacing: "-.01em" }}>
+              Nền tảng nghiệp vụ<br />công chứng một cửa
+            </h1>
+            <p style={{ fontSize: 14, color: "rgba(255,255,255,.66)", margin: "14px 0 28px", lineHeight: 1.6, maxWidth: 340 }}>
+              Một tài khoản duy nhất — hệ thống tự định tuyến bạn vào đúng phân hệ theo phân quyền.
+            </p>
+            <div style={{ display: "flex", flexDirection: "column", gap: 14 }}>
+              {[{ icon: "ScanLine", t: "Bóc tách OCR đa tài liệu & VNeID" },
+                { icon: "ShieldCheck", t: "Tra cứu ngăn chặn tự động" },
+                { icon: "Workflow", t: "Định tuyến liên thông một cửa" }].map((f) => {
+                const Icon = L[f.icon];
+                return (
+                  <div key={f.t} style={{ display: "flex", alignItems: "center", gap: 12, fontSize: 13.5, color: "rgba(255,255,255,.86)" }}>
+                    <span style={{ width: 32, height: 32, borderRadius: 9, background: "rgba(255,255,255,.10)", display: "grid", placeItems: "center", flexShrink: 0 }}>
+                      <Icon size={16} />
+                    </span>
+                    {f.t}
+                  </div>
+                );
+              })}
+            </div>
           </div>
-        </div>
+        )}
 
-        <div style={{ fontSize: 11.5, color: "rgba(255,255,255,.45)" }}>
-          Chuyển đổi số để thành công · © 2026 FSI Việt Nam
-        </div>
+        {!stacked && (
+          <div style={{ fontSize: 11.5, color: "rgba(255,255,255,.45)" }}>
+            Chuyển đổi số để thành công · © 2026 FSI Việt Nam
+          </div>
+        )}
       </div>
 
       {/* Form */}
-      <div style={{ display: "flex", alignItems: "center", justifyContent: "center", background: "var(--bg-base)", padding: 24, overflowY: "auto" }}>
+      <div style={{ display: "flex", alignItems: stacked ? "flex-start" : "center", justifyContent: "center", background: "var(--bg-base)", padding: stacked ? "26px 18px 32px" : 24, overflowY: stacked ? "visible" : "auto" }}>
         {mustChange ? (
           <form onSubmit={submitNewPassword} style={{ width: "100%", maxWidth: 420, display: "flex", flexDirection: "column", gap: 18 }}>
             <div>

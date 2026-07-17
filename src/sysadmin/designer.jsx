@@ -337,6 +337,9 @@ function FlowDesigner({ onToast }) {
   const [draft, setDraft] = useDz(null); // { buoc, layout } — bản chỉnh sửa cục bộ
   const [saving, setSaving] = useDz(false);
   const [showNew, setShowNew] = useDz(false);
+  // Gọi TRƯỚC early-return "Đang tải…" bên dưới — hook phải chạy ở mọi lần render.
+  const vp = window.VAUi.useViewport();
+  const narrow = vp !== "desktop"; // màn hẹp: danh sách luồng lên trên, canvas + panel xếp dọc
 
   const load = () => window.VAApi.luongNghiepVu.list().then(setFlows).catch(() => setFlows([]));
   useEffDz(() => {
@@ -454,9 +457,11 @@ function FlowDesigner({ onToast }) {
 
   return (
     <div style={{ height: "100%", minHeight: 0, overflow: "auto" }}>
-      <div style={{ display: "grid", gridTemplateColumns: "232px minmax(0,1fr)", gap: 14, height: "100%", minHeight: 0, minWidth: 900 }}>
+      <div style={narrow
+        ? { display: "flex", flexDirection: "column", gap: 14, minHeight: 0 }
+        : { display: "grid", gridTemplateColumns: "232px minmax(0,1fr)", gap: 14, height: "100%", minHeight: 0, minWidth: 900 }}>
         {/* TRÁI — danh sách luồng theo nhóm biểu mẫu */}
-        <aside style={{ background: "var(--bg-surface)", border: "1px solid var(--border-default)", borderRadius: "var(--radius-lg)", display: "flex", flexDirection: "column", minHeight: 0 }}>
+        <aside style={{ background: "var(--bg-surface)", border: "1px solid var(--border-default)", borderRadius: "var(--radius-lg)", display: "flex", flexDirection: "column", minHeight: 0, maxHeight: narrow ? 240 : undefined, flexShrink: 0 }}>
           <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", gap: 8, padding: "13px 14px", borderBottom: "1px solid var(--border-subtle)" }}>
             <div style={{ minWidth: 0 }}>
               <div style={{ fontSize: 13.5, fontWeight: 700 }}>Luồng nghiệp vụ</div>
@@ -526,12 +531,16 @@ function FlowDesigner({ onToast }) {
                   )}
                 </div>
               </header>
-              <div style={{ flex: 1, minHeight: 0, display: "grid", gridTemplateColumns: "minmax(0,1fr) 340px", gap: 12, padding: 12 }}>
+              <div style={{ flex: 1, minHeight: 0, display: "grid", gridTemplateColumns: narrow ? "1fr" : "minmax(0,1fr) 340px", gap: 12, padding: 12 }}>
                 {draft && (
-                  <FlowCanvas draft={draft} selStepId={selStepId} editable={editable}
-                    onSelect={setSelStepId} onMove={moveStep} />
+                  <div style={{ minHeight: narrow ? 300 : 0, display: "flex" }}>
+                    <FlowCanvas draft={draft} selStepId={selStepId} editable={editable}
+                      onSelect={setSelStepId} onMove={moveStep} />
+                  </div>
                 )}
-                <div style={{ borderLeft: "1px solid var(--border-subtle)", paddingLeft: 12, minHeight: 0, display: "flex", flexDirection: "column" }}>
+                <div style={narrow
+                  ? { borderTop: "1px solid var(--border-subtle)", paddingTop: 12, minHeight: 0, display: "flex", flexDirection: "column" }
+                  : { borderLeft: "1px solid var(--border-subtle)", paddingLeft: 12, minHeight: 0, display: "flex", flexDirection: "column" }}>
                   {selStep
                     ? <StepConfigPanel step={selStep} meta={selMeta} editable={editable} onChange={(p) => patchStep(selStep.id, p)} />
                     : <div style={{ flex: 1, display: "grid", placeItems: "center", color: "var(--text-tertiary)", fontSize: 12.5 }}>Bấm vào 1 bước trên sơ đồ để cấu hình.</div>}

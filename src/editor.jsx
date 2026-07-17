@@ -271,8 +271,12 @@ function DraftWorkspace({ tabs, ocrDocs, compact, onAddTemplate, addOptions, rea
     });
   }
 
+  const vpEd = window.VAUi.useViewport();
+  const narrowEd = vpEd !== "desktop"; // màn hẹp: dải trường chèn nằm ngang phía trên editor
   return (
-    <div style={{ display: "grid", gridTemplateColumns: "260px 1fr", gap: 16, alignItems: "stretch", minHeight: 0 }}>
+    <div style={narrowEd
+      ? { display: "grid", gridTemplateRows: "170px minmax(0,1fr)", gap: 12, alignItems: "stretch", minHeight: 0 }
+      : { display: "grid", gridTemplateColumns: "260px 1fr", gap: 16, alignItems: "stretch", minHeight: 0 }}>
       <div style={{ overflowY: "auto", minHeight: 0, paddingRight: 2 }}>
         <FieldRail ocrDocs={ocrDocs} onInsertField={insertField} activeKeys={activeKeys} />
       </div>
