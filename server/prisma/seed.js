@@ -33,12 +33,18 @@ async function main() {
     { maNhanVien: "gd.vpcc", hoTen: "Ban Lãnh đạo VPCC", email: "gd@vietan.vn", vaiTro: ["LANH_DAO"] },
   ];
 
+  // Tài khoản demo phải đăng nhập được bằng MAT_KHAU_DEMO ở MỌI lần deploy
+  // (seed chạy lại trong buildCommand trên Render): reset cả mật khẩu lẫn vai
+  // trò/trạng thái nếu ai đó đã đổi. Đặt sẵn lastLogin để khỏi dính REQ-050
+  // (bắt đổi mật khẩu lần đầu) — yêu cầu đó vẫn áp dụng cho tài khoản THẬT do
+  // QTHT tạo qua UI, chỉ bỏ qua cho bộ demo điền nhanh ở trang đăng nhập.
   const nv = {};
   for (const u of NHAN_VIEN) {
+    const resetDemo = { matKhauHash, vaiTro: u.vaiTro, trangThai: "ACTIVE", lastLogin: new Date() };
     nv[u.maNhanVien] = await prisma.nhanVien.upsert({
       where: { email: u.email },
-      update: {},
-      create: { ...u, matKhauHash, noiLamViecId: noiLamViec.id },
+      update: resetDemo,
+      create: { ...u, ...resetDemo, noiLamViecId: noiLamViec.id },
     });
   }
 

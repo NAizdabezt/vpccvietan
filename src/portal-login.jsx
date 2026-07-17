@@ -18,8 +18,10 @@ function destFor(vaiTroArr) {
   return found ? found.dest : "index.html";
 }
 
-// Chỉ để tiện điền nhanh lúc demo — KHÔNG còn dùng để xác thực, form vẫn phải
-// gọi API thật và server mới là nơi quyết định đúng/sai.
+// Nút "đăng nhập nhanh theo vị trí" lúc demo — vẫn gọi API thật với đúng cặp
+// tài khoản/mật khẩu seed (server/prisma/seed.js reset lại mỗi lần deploy),
+// server mới là nơi quyết định đúng/sai. user = maNhanVien (auth.js chấp nhận
+// cả email lẫn mã ngắn).
 const DEMO_ACCOUNTS = [
   { label: "Quản trị viên", desc: "Thiết kế luồng & phân quyền", icon: "Settings", user: "can.nv" },
   { label: "Lãnh đạo", desc: "Dashboard điều hành & doanh thu", icon: "LineChart", user: "gd.vpcc" },
@@ -45,15 +47,14 @@ function PortalLogin() {
   const [newPw, setNewPw] = useStatePL("");
   const [newPw2, setNewPw2] = useStatePL("");
 
-  const fill = (acc) => { setUser(acc.user); setPw(DEMO_PW); setErr(""); };
-
-  const submit = async (e) => {
-    e.preventDefault();
+  // Đăng nhập bằng cặp tài khoản/mật khẩu TƯỜNG MINH (không đọc từ state —
+  // tránh lệch giá trị khi bấm nút demo: setState là bất đồng bộ).
+  const doLogin = async (taiKhoan, matKhau) => {
     if (busy) return;
     setBusy(true);
     setErr("");
     try {
-      const { nhanVien, mustChangePassword } = await window.VAApi.login(user.trim(), pw);
+      const { nhanVien, mustChangePassword } = await window.VAApi.login(taiKhoan.trim(), matKhau);
       if (mustChangePassword) {
         setMustChange({ vaiTro: nhanVien.vaiTro });
       } else {
@@ -64,6 +65,20 @@ function PortalLogin() {
     } finally {
       setBusy(false);
     }
+  };
+
+  // Nút demo: điền vào form (để người xem thấy đúng tài khoản/mật khẩu đang
+  // dùng) và đăng nhập luôn — 1 chạm vào thẳng phân hệ của vai trò đó.
+  const quickLogin = (acc) => {
+    setUser(acc.user);
+    setPw(DEMO_PW);
+    setErr("");
+    doLogin(acc.user, DEMO_PW);
+  };
+
+  const submit = (e) => {
+    e.preventDefault();
+    doLogin(user, pw);
   };
 
   const submitNewPassword = async (e) => {
@@ -192,10 +207,10 @@ function PortalLogin() {
             </Button>
 
             <div>
-              <div style={{ fontSize: 11, fontWeight: 700, textTransform: "uppercase", letterSpacing: ".05em", color: "var(--text-tertiary)", marginBottom: 8 }}>Tài khoản demo — điền nhanh</div>
+              <div style={{ fontSize: 11, fontWeight: 700, textTransform: "uppercase", letterSpacing: ".05em", color: "var(--text-tertiary)", marginBottom: 8 }}>Đăng nhập nhanh theo vị trí</div>
               <div style={{ display: "flex", flexWrap: "wrap", gap: 6 }}>
                 {DEMO_ACCOUNTS.map((acc) => (
-                  <button key={acc.user} type="button" onClick={() => fill(acc)} title={acc.desc} style={{
+                  <button key={acc.user} type="button" disabled={busy} onClick={() => quickLogin(acc)} title={acc.desc + " · " + acc.user} style={{
                     display: "inline-flex", alignItems: "center", gap: 5, padding: "5px 10px", borderRadius: "var(--radius-full)",
                     border: "1px solid var(--border-default)", background: "var(--bg-surface)", color: "var(--text-secondary)",
                     fontSize: 12, cursor: "pointer",

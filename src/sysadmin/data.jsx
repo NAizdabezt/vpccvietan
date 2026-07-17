@@ -2,123 +2,9 @@
 /* PH05 — Quản trị hệ thống (Admin) · mock dữ liệu
    Phân hệ Quản trị viên: Thiết kế luồng · Tài khoản · Phân quyền · Nhật ký */
 
-/* ---- Vai trò nghiệp vụ trong luồng (mỗi vai trò một màu) ---- */
-const SA_ROLES = [
-  { id: "tiepnhan", short: "Tiếp nhận", label: "Tiếp nhận một cửa", color: "#e11d48", icon: "ConciergeBell" },
-  { id: "tknv",     short: "TKNV",      label: "Thư ký nghiệp vụ",  color: "#2563eb", icon: "PenLine" },
-  { id: "ccv",      short: "CCV",       label: "Công chứng viên",   color: "#7c3aed", icon: "FileSignature" },
-  { id: "cashier",  short: "Thu ngân",  label: "Thu ngân",          color: "#d97706", icon: "Wallet" },
-  { id: "acct",     short: "Kế toán",   label: "Kế toán",           color: "#0891b2", icon: "Calculator" },
-  { id: "luutru",   short: "Lưu trữ",   label: "Lưu trữ – số hóa",  color: "#16a34a", icon: "Archive" },
-];
-
-/* ---- Loại thao tác (gắn vào bước) ---- */
-const SA_OPS = [
-  { id: "intake",   label: "Tiếp nhận & định danh", icon: "ScanLine" },
-  { id: "draft",    label: "Soạn thảo văn bản",     icon: "FileText" },
-  { id: "check",    label: "Tra cứu ngăn chặn",     icon: "ShieldCheck" },
-  { id: "fee",      label: "Thu phí & phiếu thu",   icon: "Receipt" },
-  { id: "invoice",  label: "Xuất hóa đơn",          icon: "FileSpreadsheet" },
-  { id: "sign",     label: "Ký số / ký sống",       icon: "PenTool" },
-  { id: "number",   label: "Cấp số công chứng",     icon: "Hash" },
-  { id: "digitize", label: "Số hóa & lưu trữ",      icon: "Archive" },
-  { id: "review",   label: "Thẩm định nội dung",    icon: "SearchCheck" },
-  { id: "photo",    label: "Chụp ảnh xác thực",     icon: "Camera" },
-  { id: "notify",   label: "Gửi thông báo / nhắc",  icon: "Bell" },
-];
-
-/* ---- Điều kiện chuyển bước (chọn sẵn, KHÔNG gõ tay) ---- */
-const SA_GATES = [
-  { id: "",          label: "— Không điều kiện —" },
-  { id: "identified",label: "Đã định danh VNeID" },
-  { id: "checked",   label: "Đã tra cứu ngăn chặn" },
-  { id: "paid",      label: "Đã thanh toán đủ" },
-  { id: "approved",  label: "CCV đã phê duyệt nội dung" },
-  { id: "numbered",  label: "Đã cấp số công chứng" },
-  { id: "signed",    label: "Đã ký số" },
-];
-
-/* ---- Thư viện luồng (mỗi luồng = đồ thị bước, config-driven) ----
-   Mỗi bước:
-     deps        — phụ thuộc vào những bước nào (rỗng = bước gốc / chạy song song)
-     lockedDeps  — phụ thuộc do HỆ THỐNG khóa sẵn, không cho gỡ (vd Ký ⟵ Cấp số)
-     join        — "AND" (chờ tất cả) | "OR" (chờ bất kỳ) khi có nhiều phụ thuộc
-     locked      — khóa pháp lý: bắt buộc, không xóa/đổi vị trí/tắt
-     optional    — bật/tắt được
-     enabled     — đang bật hay không (chỉ áp dụng khi optional)
-     blocking    — true = chặn luồng (blocking) | false = chạy nền (non-blocking)
-     gate        — điều kiện chuyển bước (id trong SA_GATES)
-     sla, slaRequired — SLA phút + bắt buộc                                        */
-const SA_FLOWS = [
-  {
-    id: "f-hdmb",
-    name: "Hợp đồng mua bán BĐS",
-    docType: "Hợp đồng",
-    office: "Trụ sở chính – Hà Đông",
-    status: "active",
-    updated: "10/06/2026",
-    version: 7,
-    steps: [
-      { id: "s1", name: "Tiếp nhận & định danh VNeID", role: "tiepnhan", op: "intake",   deps: [],            lockedDeps: [], join: "AND", locked: true,  optional: false, enabled: true,  blocking: true,  gate: "",          sla: 15, slaRequired: true,  docs: ["CCCD/VNeID", "Giấy tờ BĐS"] },
-      { id: "s2", name: "Tra cứu ngăn chặn",           role: "tknv",     op: "check",    deps: ["s1"],        lockedDeps: [], join: "AND", locked: true,  optional: false, enabled: true,  blocking: true,  gate: "identified",sla: 20, slaRequired: true,  docs: ["Phiếu tra cứu"] },
-      { id: "s3", name: "Soạn thảo hợp đồng",          role: "tknv",     op: "draft",    deps: ["s2"],        lockedDeps: [], join: "AND", locked: true,  optional: false, enabled: true,  blocking: true,  gate: "checked",   sla: 60, slaRequired: true,  docs: ["Mẫu HĐ mua bán"] },
-      { id: "s4", name: "Thu phí công chứng",          role: "cashier",  op: "fee",      deps: ["s3"],        lockedDeps: [], join: "AND", locked: true,  optional: false, enabled: true,  blocking: true,  gate: "",          sla: 10, slaRequired: true,  docs: ["Phiếu thu"] },
-      { id: "s5", name: "Thẩm định nội dung",          role: "ccv",      op: "review",   deps: ["s3"],        lockedDeps: [], join: "AND", locked: true,  optional: false, enabled: true,  blocking: true,  gate: "",          sla: 30, slaRequired: true,  docs: [] },
-      { id: "s6", name: "Cấp số & vào sổ công chứng",  role: "ccv",      op: "number",   deps: ["s4", "s5"],  lockedDeps: [], join: "AND", locked: true,  optional: false, enabled: true,  blocking: true,  gate: "paid",      sla: 10, slaRequired: true,  docs: ["Sổ công chứng"] },
-      { id: "s7", name: "Ký số công chứng",            role: "ccv",      op: "sign",     deps: ["s6"],        lockedDeps: ["s6"], join: "AND", locked: true, optional: false, enabled: true, blocking: true, gate: "numbered",  sla: 25, slaRequired: true,  docs: ["Token CCV"] },
-      { id: "s8", name: "Chụp ảnh xác thực hồ sơ",     role: "ccv",      op: "photo",    deps: ["s6"],        lockedDeps: [], join: "AND", locked: false, optional: true,  enabled: true,  blocking: false, gate: "",          sla: 5,  slaRequired: false, docs: [] },
-      { id: "s9", name: "Số hóa & liên thông CMC",     role: "luutru",   op: "digitize", deps: ["s7"],        lockedDeps: [], join: "AND", locked: true,  optional: false, enabled: true,  blocking: true,  gate: "signed",    sla: 30, slaRequired: true,  docs: ["Bản scan", "Đồng bộ CMC"] },
-    ],
-  },
-  {
-    id: "f-saoy",
-    name: "Sao y – Chứng thực bản sao",
-    docType: "Sao y",
-    office: "Tất cả văn phòng",
-    status: "active",
-    updated: "08/06/2026",
-    version: 3,
-    steps: [
-      { id: "s1", name: "Tiếp nhận bản chính",      role: "tiepnhan", op: "intake",   deps: [],     lockedDeps: [], join: "AND", locked: true,  optional: false, enabled: true, blocking: true,  gate: "",     sla: 5,  slaRequired: true,  docs: ["Bản chính"] },
-      { id: "s2", name: "Đối chiếu & soạn bản sao", role: "tknv",     op: "draft",    deps: ["s1"], lockedDeps: [], join: "AND", locked: true,  optional: false, enabled: true, blocking: true,  gate: "",     sla: 15, slaRequired: true,  docs: [] },
-      { id: "s3", name: "Thu phí",                  role: "cashier",  op: "fee",      deps: ["s2"], lockedDeps: [], join: "AND", locked: true,  optional: false, enabled: true, blocking: true,  gate: "",     sla: 5,  slaRequired: true,  docs: ["Phiếu thu"] },
-      { id: "s4", name: "Ký chứng thực",            role: "ccv",      op: "sign",     deps: ["s3"], lockedDeps: [], join: "AND", locked: true,  optional: false, enabled: true, blocking: true,  gate: "paid", sla: 10, slaRequired: true,  docs: [] },
-      { id: "s5", name: "Số hóa & lưu trữ",         role: "luutru",   op: "digitize", deps: ["s4"], lockedDeps: [], join: "AND", locked: false, optional: true,  enabled: true, blocking: false, gate: "",     sla: 15, slaRequired: false, docs: ["Bản scan"] },
-    ],
-  },
-  {
-    id: "f-uyquyen",
-    name: "Hợp đồng ủy quyền",
-    docType: "Ủy quyền",
-    office: "Chi nhánh Cầu Giấy",
-    status: "draft",
-    updated: "06/06/2026",
-    version: 2,
-    steps: [
-      { id: "s1", name: "Tiếp nhận & định danh", role: "tiepnhan", op: "intake", deps: [],     lockedDeps: [], join: "AND", locked: true, optional: false, enabled: true, blocking: true, gate: "",          sla: 15, slaRequired: true, docs: ["CCCD/VNeID"] },
-      { id: "s2", name: "Tra cứu ngăn chặn",     role: "tknv",     op: "check", deps: ["s1"], lockedDeps: [], join: "AND", locked: true, optional: false, enabled: true, blocking: true, gate: "identified",sla: 20, slaRequired: true, docs: [] },
-      { id: "s3", name: "Soạn thảo ủy quyền",    role: "tknv",     op: "draft", deps: ["s2"], lockedDeps: [], join: "AND", locked: true, optional: false, enabled: true, blocking: true, gate: "checked",   sla: 45, slaRequired: true, docs: ["Mẫu ủy quyền"] },
-      { id: "s4", name: "Thu phí",               role: "cashier",  op: "fee",   deps: ["s3"], lockedDeps: [], join: "AND", locked: true, optional: false, enabled: true, blocking: true, gate: "",          sla: 10, slaRequired: true, docs: [] },
-      { id: "s5", name: "Ký số",                 role: "ccv",      op: "sign",  deps: ["s4"], lockedDeps: [], join: "AND", locked: true, optional: false, enabled: true, blocking: true, gate: "paid",      sla: 20, slaRequired: true, docs: ["Token CCV"] },
-    ],
-  },
-  {
-    id: "f-dichuc",
-    name: "Di chúc",
-    docType: "Di chúc",
-    office: "Trụ sở chính – Hà Đông",
-    status: "draft",
-    updated: "02/06/2026",
-    version: 1,
-    steps: [
-      { id: "s1", name: "Tiếp nhận & ghi nhận ý chí", role: "tiepnhan", op: "intake", deps: [],            lockedDeps: [], join: "AND", locked: true, optional: false, enabled: true, blocking: true, gate: "",         sla: 20, slaRequired: true, docs: ["CCCD/VNeID"] },
-      { id: "s2", name: "Soạn thảo di chúc",          role: "tknv",     op: "draft",  deps: ["s1"],        lockedDeps: [], join: "AND", locked: true, optional: false, enabled: true, blocking: true, gate: "",         sla: 90, slaRequired: true, docs: ["Mẫu di chúc"] },
-      { id: "s3", name: "Thẩm định pháp lý",          role: "ccv",      op: "review", deps: ["s2"],        lockedDeps: [], join: "AND", locked: true, optional: false, enabled: true, blocking: true, gate: "",         sla: 40, slaRequired: true, docs: [] },
-      { id: "s4", name: "Thu phí",                    role: "cashier",  op: "fee",    deps: ["s2"],        lockedDeps: [], join: "AND", locked: true, optional: false, enabled: true, blocking: true, gate: "",         sla: 10, slaRequired: true, docs: [] },
-      { id: "s5", name: "Ký & niêm phong",            role: "ccv",      op: "sign",   deps: ["s3", "s4"],  lockedDeps: [], join: "AND", locked: true, optional: false, enabled: true, blocking: true, gate: "approved", sla: 25, slaRequired: true, docs: [] },
-    ],
-  },
-];
+/* "Thiết kế luồng" trước đây có SA_ROLES/SA_OPS/SA_GATES/SA_FLOWS ở đây (đồ thị
+   bước/vai trò/gate hoàn toàn giả cho canvas kéo-thả) — đã bỏ, xem
+   src/sysadmin/designer.jsx (giờ gọi thật window.VAApi.luongNghiepVu). */
 
 /* ---- Tài khoản người dùng ---- */
 const SA_ACCOUNTS = [
@@ -411,14 +297,10 @@ const SA_AUDIT_CATS = [
 ];
 
 window.SA_DATA = {
-  roles: SA_ROLES, ops: SA_OPS, gates: SA_GATES, flows: SA_FLOWS, accounts: SA_ACCOUNTS,
+  accounts: SA_ACCOUNTS,
   sysRoles: SA_SYSROLES, perms: SA_PERMS, permGroups: SA_PERM_GROUPS, permCols: SA_PERM_COLS, matrix: SA_MATRIX,
   workplaces: SA_WORKPLACES, workplaceTypes: SA_WORKPLACE_TYPES,
   delegationScopes: SA_DELEGATION_SCOPES, tokenOwners: SA_TOKEN_OWNERS, delegations: SA_DELEGATIONS,
   audit: SA_AUDIT, auditCats: SA_AUDIT_CATS,
   admin: { name: "Phan Thanh Tùng", role: "Quản trị viên" },
 };
-/* helpers */
-window.SA_roleOf = (id) => SA_ROLES.find((r) => r.id === id) || SA_ROLES[0];
-window.SA_opOf = (id) => SA_OPS.find((o) => o.id === id) || SA_OPS[0];
-window.SA_gateOf = (id) => SA_GATES.find((g) => g.id === id) || SA_GATES[0];

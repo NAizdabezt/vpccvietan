@@ -10,6 +10,76 @@ const VA_STEPS = [
   { id: 4, label: "In & chuyển", icon: "Printer" },
 ];
 
+// Danh sách giấy tờ cần nhập ở bước "Bóc tách giấy tờ" — trước đây luôn cố
+// định 4 loại giấy tờ bất kể chọn biểu mẫu nào. Giờ tra theo "Thiết kế luồng"
+// (Quản trị hệ thống): mỗi NHÓM biểu mẫu (picked[].group) có thể có 1 luồng
+// đang áp dụng riêng, chứa danh sách giấy tờ cần cho bước này. Gộp (dedup theo
+// id) nếu phiên chọn nhiều biểu mẫu thuộc nhiều nhóm khác nhau; nếu không có
+// nhóm nào được cấu hình, dùng bộ mặc định (CCCD 2 bên) làm phương án dự phòng.
+function buildOcrDocsFor(picked, activeFlows, fallbackDocs) {
+  const nhoms = [...new Set((picked || []).map((p) => p.group).filter(Boolean))];
+  const seen = new Map();
+  nhoms.forEach((nhom) => {
+    const flow = activeFlows.find((f) => f.ten === nhom);
+    const buoc = flow && flow.danhSachBuoc && flow.danhSachBuoc.buoc;
+    const step = Array.isArray(buoc) && buoc.find((b) => b.id === "boc-tach");
+    ((step && step.giayTo) || []).forEach((d) => { if (d.id && !seen.has(d.id)) seen.set(d.id, d); });
+  });
+  if (seen.size === 0) return fallbackDocs;
+  return [...seen.values()].map((d) => ({
+    id: d.id, name: d.ten, source: "Nhập tay", icon: d.icon || "FileText", status: "manual",
+    fields: (d.truong || []).map((f) => ({ fkey: f.fkey, label: f.label, value: "", mono: !!f.mono })),
+  }));
+}
+
+// Hướng dẫn từng bước do QTHT cấu hình ở "Thiết kế luồng" (mô tả, việc cần
+// làm, SLA) — gộp từ các luồng ĐANG ÁP DỤNG của những nhóm biểu mẫu đã chọn.
+const FLOW_STEP_IDS = ["khoi-tao", "boc-tach", "tra-cuu", "soan-thao", "in-chuyen"];
+function buildStepGuide(stepIndex, picked, activeFlows) {
+  const stepId = FLOW_STEP_IDS[stepIndex];
+  const nhoms = [...new Set((picked || []).map((p) => p.group).filter(Boolean))];
+  const moTa = [], viec = [];
+  let slaPhut = null;
+  const seenViec = new Set();
+  nhoms.forEach((nhom) => {
+    const flow = activeFlows.find((f) => f.ten === nhom);
+    const buoc = flow && flow.danhSachBuoc && flow.danhSachBuoc.buoc;
+    const b = Array.isArray(buoc) && buoc.find((x) => x.id === stepId);
+    if (!b) return;
+    if (b.moTa && b.moTa.trim()) moTa.push(b.moTa.trim());
+    (b.viec || []).forEach((v) => {
+      const t = (v.ten || "").trim();
+      if (t && !seenViec.has(t)) { seenViec.add(t); viec.push(t); }
+    });
+    if (typeof b.slaPhut === "number" && b.slaPhut > 0) slaPhut = Math.max(slaPhut || 0, b.slaPhut);
+  });
+  if (!moTa.length && !viec.length && slaPhut == null) return null;
+  return { moTa, viec, slaPhut };
+}
+
+function StepGuide({ guide }) {
+  const L = window.LucideReact;
+  if (!guide) return null;
+  return (
+    <div style={{ display: "flex", alignItems: "flex-start", gap: 10, margin: "0 0 12px", padding: "9px 13px", background: "var(--bg-info)", border: "1px solid var(--border-info)", borderRadius: "var(--radius-md)", fontSize: 12.5, color: "var(--text-info)" }}>
+      <L.Info size={15} style={{ marginTop: 1, flexShrink: 0 }} />
+      <div style={{ flex: 1, display: "flex", flexDirection: "column", gap: 4 }}>
+        {guide.moTa.map((m, i) => <div key={i}>{m}</div>)}
+        {guide.viec.length > 0 && (
+          <ul style={{ margin: 0, paddingLeft: 18, display: "flex", flexDirection: "column", gap: 2 }}>
+            {guide.viec.map((v, i) => <li key={i}>{v}</li>)}
+          </ul>
+        )}
+      </div>
+      {guide.slaPhut != null && (
+        <span style={{ flexShrink: 0, fontSize: 11, fontWeight: 700, color: "var(--text-warning)", border: "1px solid var(--border-warning)", background: "var(--bg-warning)", borderRadius: "var(--radius-full)", padding: "2px 9px", whiteSpace: "nowrap" }}>
+          SLA {guide.slaPhut} phút
+        </span>
+      )}
+    </div>
+  );
+}
+
 function Stepper({ step, setStep, maxReached }) {
   const L = window.LucideReact;
   return (
@@ -90,6 +160,17 @@ function FlowA({ density, session, onExit, onStatus, onMeta, mode, role, current
   }, []);
   const TPLS = realTpls.length ? realTpls : ((window.VATemplates && window.VATemplates.list()) || D.templates);
 
+  // Luồng đang áp dụng (Quản trị hệ thống → Thiết kế luồng) — quyết định danh
+  // sách giấy tờ cần nhập ở bước "Bóc tách giấy tờ" theo nhóm biểu mẫu đã chọn.
+  const [activeFlows, setActiveFlows] = useStateA([]);
+  const [flowsLoaded, setFlowsLoaded] = useStateA(false);
+  React.useEffect(() => {
+    window.VAApi.luongNghiepVu.list()
+      .then((rows) => setActiveFlows(rows.filter((r) => r.trangThai === "DANG_AP_DUNG")))
+      .catch(() => {})
+      .finally(() => setFlowsLoaded(true));
+  }, []);
+
   const initPicked = (seeded && session && session.types && session.types.length)
     ? session.types.map((nm) => { const t = TPLS.find((x) => x.name === nm) || { id: nm, name: nm, group: "" }; return { id: t.id, tid: t.id, name: t.name, group: t.group, kind: t.kind }; })
     : [{ id: "t1", tid: "t1", name: "HĐ Chuyển nhượng QSDĐ", group: "Bất động sản", kind: "land" }];
@@ -100,9 +181,23 @@ function FlowA({ density, session, onExit, onStatus, onMeta, mode, role, current
   const [picked, setPicked] = useStateA(initPicked);
   const [hoSoId, setHoSoId] = useStateA(session && session.hoSoId ? session.hoSoId : null);
   const [saving, setSaving] = useStateA(false);
-  const [ocr, setOcr] = useStateA(() => D.ocrDocs.map((d) => ({ ...d, fields: d.fields.map((f) => ({ ...f })) })));
+  const fallbackOcrDocs = () => D.ocrDocs.map((d) => ({ ...d, fields: d.fields.map((f) => ({ ...f })) }));
+  const [ocr, setOcr] = useStateA(fallbackOcrDocs);
   const [scanned, setScanned] = useStateA(seeded);
   const [checks, setChecks] = useStateA(() => seeded ? D.ocrDocs.reduce((a, d) => { a[d.id] = true; return a; }, {}) : {});
+
+  // Phiên ĐANG MỞ LẠI (không phải mới) có thể nhảy thẳng vào bước 1+ qua
+  // Stepper mà không đi qua goNext() bên dưới — tính lại 1 LẦN khi danh sách
+  // luồng đang áp dụng tải xong, để vẫn dùng đúng checklist thật thay vì bộ
+  // mặc định. Phiên MỚI tính lại ở goNext() (dùng picked mới nhất tại bước 0).
+  const ocrInitRef = React.useRef(false);
+  React.useEffect(() => {
+    if (!seeded || !flowsLoaded || ocrInitRef.current) return;
+    ocrInitRef.current = true;
+    const docs = buildOcrDocsFor(picked, activeFlows, fallbackOcrDocs());
+    setOcr(docs);
+    setChecks(docs.reduce((a, d) => { a[d.id] = true; return a; }, {}));
+  }, [flowsLoaded]);
   const [shots, setShots] = useStateA(() => seeded ? [{ id: "shot-seed", label: "Ảnh tra cứu 1", hue: 200 }] : []);
   const [printCfgs, setPrintCfgs] = useStateA({});
   // Nội dung Quill đã soạn cho phiên NÀY, theo từng biểu mẫu — { [bieuMauId]: html }.
@@ -184,6 +279,13 @@ function FlowA({ density, session, onExit, onStatus, onMeta, mode, role, current
     setSaving(true);
     try {
       await ensureHoSo();
+      // Phiên MỚI: tính checklist giấy tờ theo lựa chọn biểu mẫu cuối cùng ở
+      // bước 0 (không dùng effect vì picked có thể còn đổi trước khi tới đây).
+      if (!seeded) {
+        const docs = buildOcrDocsFor(picked, activeFlows, fallbackOcrDocs());
+        setOcr(docs);
+        setChecks({});
+      }
       go(1);
     } catch (e) {
       setToast({ tone: "danger", title: "Không tạo được hồ sơ", message: e.message || "Không rõ nguyên nhân" });
@@ -364,6 +466,7 @@ function FlowA({ density, session, onExit, onStatus, onMeta, mode, role, current
         </div>
       )}
       <Stepper step={step} setStep={go} maxReached={maxReached} />
+      <StepGuide guide={buildStepGuide(step, picked, activeFlows)} />
       <div style={{ flex: 1, minHeight: 0, overflow: step === 3 ? "hidden" : "auto", display: "flex", flexDirection: "column" }}>{body}</div>
       <div style={{ display: "flex", justifyContent: "space-between", paddingTop: 14 }}>
         <Button variant="ghost" icon={L.ArrowLeft} onClick={() => step === 0 ? (onExit && onExit()) : go(step - 1)}>{step === 0 ? "Về tổng quan" : "Quay lại"}</Button>

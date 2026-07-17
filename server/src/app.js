@@ -12,6 +12,7 @@ const noiLamViecRoutes = require("./routes/noi-lam-viec");
 const uyThacRoutes = require("./routes/uy-thac");
 const auditLogRoutes = require("./routes/audit-log");
 const thongBaoRoutes = require("./routes/thong-bao");
+const luongNghiepVuRoutes = require("./routes/luong-nghiep-vu");
 
 const app = express();
 
@@ -33,6 +34,7 @@ app.use("/api/noi-lam-viec", noiLamViecRoutes);
 app.use("/api/uy-thac", uyThacRoutes);
 app.use("/api/audit-log", auditLogRoutes);
 app.use("/api/thong-bao", thongBaoRoutes);
+app.use("/api/luong-nghiep-vu", luongNghiepVuRoutes);
 
 app.use((err, req, res, next) => {
   console.error(err);

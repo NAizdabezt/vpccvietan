@@ -134,6 +134,17 @@ const thongBao = {
   markRead: () => request("/api/thong-bao/danh-dau-da-doc", { method: "POST" }),
 };
 
+// Thiết kế luồng (Quản trị hệ thống) — chỉ cấu hình mô tả bước + danh sách
+// giấy tờ cần nhập theo nhóm biểu mẫu, KHÔNG phải trạng thái/RBAC thật.
+const luongNghiepVu = {
+  list: () => request("/api/luong-nghiep-vu"),
+  create: (body) => request("/api/luong-nghiep-vu", { method: "POST", body }),
+  update: (id, body) => request(`/api/luong-nghiep-vu/${id}`, { method: "PATCH", body }),
+  nhanBan: (id) => request(`/api/luong-nghiep-vu/${id}/nhan-ban`, { method: "POST" }),
+  kichHoat: (id) => request(`/api/luong-nghiep-vu/${id}/kich-hoat`, { method: "POST" }),
+  remove: (id) => request(`/api/luong-nghiep-vu/${id}`, { method: "DELETE" }),
+};
+
 // Đẩy thông báo real-time qua WebSocket (server/src/lib/ws-hub.js) — tự kết
 // nối lại nếu rớt (backoff cố định, đủ dùng cho công cụ nội bộ 1 văn phòng).
 // Trả về hàm hủy đăng ký (đóng socket, dừng tự kết nối lại).
@@ -163,4 +174,4 @@ function connectRealtime(onMessage) {
   };
 }
 
-window.VAApi = { login, logout, doiMatKhau, getToken, getUser, isAuthed, request, hoSo, bieuMau, hoaDon, khachHang, nhanVien, noiLamViec, uyThac, auditLog, thongBao, connectRealtime };
+window.VAApi = { login, logout, doiMatKhau, getToken, getUser, isAuthed, request, hoSo, bieuMau, hoaDon, khachHang, nhanVien, noiLamViec, uyThac, auditLog, thongBao, luongNghiepVu, connectRealtime };
