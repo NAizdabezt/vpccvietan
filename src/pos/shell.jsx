@@ -43,7 +43,7 @@ function PosSidebar({ active, onNav, role }) {
             {grp.items.map((item) => {
               const Icon = L[item.icon]; const on = active === item.id;
               return (
-                <a key={item.id} onClick={() => onNav(item.id)} style={{
+                <a key={item.id} href="#" onClick={(e) => { e.preventDefault(); onNav(item.id); }} style={{
                   display: "flex", alignItems: "center", gap: 10, padding: "8px 12px", borderRadius: "var(--radius-md)",
                   fontSize: 14, cursor: "pointer", fontWeight: on ? 500 : 400,
                   color: on ? "var(--accent)" : "var(--text-tertiary)", background: on ? "var(--accent-muted)" : "transparent",

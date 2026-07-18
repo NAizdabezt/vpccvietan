@@ -11,21 +11,38 @@ const { useState: useCap, useRef: useRefCap, useEffect: useEffCap } = React;
 
 function MobileCameraPicker({ onCapture, label, icon, disabled, size, variant }) {
   const L = window.LucideReact;
-  const { Button } = window.FSICheckinDesignSystem_019df8;
-  const inputRef = useRefCap(null);
+  const Icon = icon || L.Camera;
+  // iOS Safari ÂM THẦM bỏ qua input.click() gọi gián tiếp lên <input type=file>
+  // đang display:none (không lỗi console nào — đúng triệu chứng "bấm không có
+  // gì xảy ra" trên iPhone). Cách chống lỗi chuẩn: <label> bọc input thật để
+  // HỆ ĐIỀU HÀNH tự mở camera khi chạm (kích hoạt native, không qua JS), và
+  // giấu input bằng absolute+opacity thay vì display:none.
+  const sizes = {
+    sm: { padding: "6px 12px", fontSize: 13, gap: 6, icon: 14 },
+    md: { padding: "9px 16px", fontSize: 14, gap: 8, icon: 16 },
+  };
+  const s = sizes[size] || sizes.sm;
+  const isPrimary = variant === "primary";
   return (
-    <>
-      <input ref={inputRef} type="file" accept="image/*" capture="environment" style={{ display: "none" }}
+    <label style={{
+      position: "relative", display: "inline-flex", alignItems: "center", justifyContent: "center", gap: s.gap,
+      padding: s.padding, fontSize: s.fontSize, fontWeight: 500, fontFamily: "var(--font-sans)",
+      borderRadius: "var(--radius-md)", cursor: disabled ? "default" : "pointer", whiteSpace: "nowrap",
+      border: "1px solid " + (isPrimary ? "var(--accent)" : "var(--border-default)"),
+      background: isPrimary ? "var(--accent)" : "var(--bg-surface)",
+      color: isPrimary ? "#fff" : "var(--text-primary)",
+      boxShadow: "var(--shadow-xs)", opacity: disabled ? .6 : 1, overflow: "hidden",
+    }}>
+      <input type="file" accept="image/*" capture="environment" disabled={disabled}
+        style={{ position: "absolute", width: 1, height: 1, opacity: 0, pointerEvents: "none" }}
         onChange={(e) => {
           const f = e.target.files && e.target.files[0];
           e.target.value = ""; // cho phép chụp lại cùng 1 "file" nhiều lần liên tiếp
           if (f) onCapture(f);
         }} />
-      <Button variant={variant || "secondary"} size={size || "sm"} icon={icon || L.Camera} disabled={disabled}
-        onClick={() => inputRef.current && inputRef.current.click()}>
-        {label || "Chụp ảnh"}
-      </Button>
-    </>
+      <Icon size={s.icon} />
+      {label || "Chụp ảnh"}
+    </label>
   );
 }
 

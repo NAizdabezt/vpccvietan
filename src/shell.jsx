@@ -45,8 +45,10 @@ function Sidebar({ active, onNav, role, badges }) {
                 const Icon = L[item.icon];
                 const on = active === item.id;
                 const badge = item.badgeKey ? b[item.badgeKey] : item.badge;
+                // href="#" để iOS Safari coi đây là link thật — <a> không href
+                // bị iOS "nuốt" cú chạm trong một số điều kiện (menu không bấm được).
                 return (
-                  <a key={item.id} onClick={() => onNav && onNav(item.id)} style={{
+                  <a key={item.id} href="#" onClick={(e) => { e.preventDefault(); onNav && onNav(item.id); }} style={{
                     display: "flex", alignItems: "center", gap: 10, padding: "8px 12px",
                     borderRadius: "var(--radius-md)", fontSize: 14, cursor: "pointer",
                     fontWeight: on ? 500 : 400,

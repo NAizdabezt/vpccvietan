@@ -1,11 +1,10 @@
 /* global React, window */
 /* Các khối dùng lại cho luồng soạn thảo CCV / TKNV */
-const { useState: usePc, useRef: useRefPc } = React;
+const { useState: usePc } = React;
 
 /* ---- Bước Bóc tách: thanh nguồn (máy scan + tải ảnh) ---- */
 function ScanBar({ connected, readOnly, onConnect, onUpload }) {
   const L = window.LucideReact;
-  const fileRef = useRefPc(null);
   return (
     <div style={{ display: "flex", alignItems: "center", gap: 12, padding: "12px 14px", background: "var(--bg-elevated)", border: "1px solid var(--border-default)", borderRadius: "var(--radius-lg)", flexWrap: "wrap" }}>
       <div style={{ display: "flex", alignItems: "center", gap: 10, flex: 1, minWidth: 220 }}>
@@ -27,10 +26,14 @@ function ScanBar({ connected, readOnly, onConnect, onUpload }) {
           <button type="button" onClick={onConnect} style={srcBtn(connected ? "ghost" : "solid")}>
             <L.ScanLine size={15} /> {connected ? "Quét tài liệu" : "Kết nối máy scan"}
           </button>
-          <button type="button" onClick={() => fileRef.current && fileRef.current.click()} style={srcBtn("ghost")}>
+          {/* <label> bọc input thật thay vì ref.click() — iOS Safari âm thầm bỏ
+              qua click() gián tiếp trên input file đang display:none. */}
+          <label style={{ ...srcBtn("ghost"), position: "relative", overflow: "hidden" }}>
+            <input type="file" accept="image/*" multiple
+              style={{ position: "absolute", width: 1, height: 1, opacity: 0, pointerEvents: "none" }}
+              onChange={() => onUpload && onUpload()} />
             <L.Upload size={15} /> Tải ảnh từ hệ thống
-          </button>
-          <input ref={fileRef} type="file" accept="image/*" multiple style={{ display: "none" }} onChange={() => onUpload && onUpload()} />
+          </label>
         </>)}
       </div>
     </div>
